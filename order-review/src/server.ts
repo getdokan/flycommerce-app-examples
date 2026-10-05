@@ -12,14 +12,17 @@ import {
   sendError,
   serveWebApp,
 } from '@flycommerce/app-server';
+import { Data } from './data.js';
 import { showQueue } from './orders.js';
 import { showMe } from './session.js';
+import { saveSettings, showSettings } from './settings.js';
 
 export interface App {
   config: AppServerConfig;
   appConfig: AppConfig;
   hub: HubClient;
   store: StoreApi;
+  data: Data;
 }
 
 export type Route = (app: App, req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;
@@ -27,6 +30,8 @@ export type Route = (app: App, req: IncomingMessage, res: ServerResponse, url: U
 const routes: Record<string, Route> = {
   'GET /api/me': showMe,
   'GET /api/queue': showQueue,
+  'GET /api/settings': showSettings,
+  'PUT /api/settings': saveSettings,
 };
 
 export function createApp(env: NodeJS.ProcessEnv = process.env): App {
@@ -38,6 +43,7 @@ export function createApp(env: NodeJS.ProcessEnv = process.env): App {
     appConfig: loadAppConfig('app-config.json', { appId: config.appId }),
     hub,
     store: new StoreApi(config, hub),
+    data: new Data(env.DATA_FILE ?? 'data/order-review.json'),
   };
 }
 

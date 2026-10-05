@@ -1,4 +1,5 @@
 import { json } from '@flycommerce/app-server';
+import { needsReview } from './rule.js';
 import type { Route } from './server.js';
 import { whoIsAsking } from './session.js';
 
@@ -19,5 +20,7 @@ export const showQueue: Route = async (app, req, res) => {
     .asUser(asking)
     .get<{ data: StoreOrder[] }>('/api/v1/orders', { include: 'orderGroup', limit: 50 });
 
-  json(res, 200, { orders });
+  const limit = app.data.limit(asking.store);
+
+  json(res, 200, { orders: orders.filter((order) => needsReview(order.total, limit)) });
 };

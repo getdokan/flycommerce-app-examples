@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import net, { type AddressInfo } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { type FakePlatform, startFakePlatform } from '@flycommerce/app-emulator';
 import { loadAppConfig } from '@flycommerce/app-server';
@@ -21,7 +24,11 @@ before(async () => {
     appSecret: 'test-secret',
     redirectUri: `${appUrl}/auth/callback`,
   });
-  server = await startServer(createApp(platform.env), port);
+  const app = createApp({
+    ...platform.env,
+    DATA_FILE: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'order-review-')), 'data.json'),
+  });
+  server = await startServer(app, port);
 });
 
 after(async () => {
@@ -49,11 +56,13 @@ test('knows which store and user is asking, and refuses anyone else', async () =
   assert.equal((await fetch(`${server.url}/api/me`, { headers: { Authorization: `Bearer ${otherApp}` } })).status, 401);
 });
 
-test("lists the store's orders as the user", async () => {
+test("shows only orders over the store's limit, read as the user", async () => {
   platform.hub.install(APP_ID, { store: STORE, scopes: SCOPES });
-  const order = platform.store.store(STORE).addOrder({ total: 1500 });
+  const big = platform.store.store(STORE).addOrder({ total: 1500 });
+  platform.store.store(STORE).addOrder({ total: 200 });
+  await asOwner('/api/settings', { method: 'PUT', body: { limit: 1000 } });
 
-  assert.deepEqual(await queue(), [order.id]);
+  assert.deepEqual(await queue(), [big.id]);
   assert.equal(platform.store.requests.at(-1)?.userId, '1', 'the orders are read as the user');
 });
 

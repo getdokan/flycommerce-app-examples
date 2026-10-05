@@ -477,3 +477,222 @@ The test checks that the store saw the call as user 1: `platform.store.requests.
 **You should now see** all five seeded orders: there's no rule yet.
 
 Read more: [Building apps › Call the store API](https://developers.flycommerce.com/docs/apps).
+
+## 4. The rule
+
+**Goal:** only orders over the merchant's limit show, and the merchant sets the limit on a Settings page.
+
+The rule is one pure function, easy to find and change:
+
+`src/rule.ts`
+
+```ts
+/** An order needs a person to check it when its total is above the store's limit. */
+export function needsReview(total: number | string, limit: number): boolean {
+  return Number(total) > limit;
+}
+```
+
+The limit belongs to a store. `data.ts` keeps everything per store in one JSON file, written atomically: enough for one instance.
+
+`src/data.ts`
+
+```ts
+import fs from 'node:fs';
+import path from 'node:path';
+
+export const DEFAULT_LIMIT = 500;
+
+interface StoreData {
+  limit: number;
+}
+
+/** Everything the app keeps, per store, in one JSON file. */
+export class Data {
+  constructor(private readonly file: string) {}
+
+  limit(store: string): number {
+    return this.read()[store]?.limit ?? DEFAULT_LIMIT;
+  }
+
+  setLimit(store: string, limit: number): void {
+    this.update(store, (data) => (data.limit = limit));
+  }
+
+  private update(store: string, change: (data: StoreData) => unknown): void {
+    const all = this.read();
+    const data = all[store] ?? { limit: DEFAULT_LIMIT };
+    change(data);
+    all[store] = data;
+    this.write(all);
+  }
+
+  private read(): Record<string, StoreData> {
+    try {
+      return JSON.parse(fs.readFileSync(this.file, 'utf8'));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+      throw error;
+    }
+  }
+
+  // Written beside the file and renamed over it, so a crash mid-write never leaves half a file.
+  private write(all: Record<string, StoreData>): void {
+    fs.mkdirSync(path.dirname(this.file), { recursive: true });
+    const temporary = `${this.file}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, JSON.stringify(all, null, 2), { mode: 0o600 });
+    fs.renameSync(temporary, this.file);
+  }
+}
+```
+
+`settings.ts` reads and saves the limit. The store can't check an app-side decision, so the app checks the role itself. It also sends the currency the limit is in, for the field's addon:
+
+`src/settings.ts`
+
+```ts
+import { HttpError, json, readJson } from '@flycommerce/app-server';
+import type { StoreOrder } from './orders.js';
+import type { Route } from './server.js';
+import { whoIsAsking } from './session.js';
+
+const ROLES_THAT_CHANGE_SETTINGS = ['owner', 'admin'];
+
+export const showSettings: Route = async (app, req, res) => {
+  const asking = await whoIsAsking(app, req);
+  // Apps can't read the store's currency, so use the latest order's: the one totals are compared in.
+  const { data: latest } = await app.store
+    .asUser(asking)
+    .get<{ data: StoreOrder[] }>('/api/v1/orders', { include: 'orderGroup', limit: 1 });
+
+  json(res, 200, { limit: app.data.limit(asking.store), currency: latest[0]?.orderGroup?.currency ?? null });
+};
+
+export const saveSettings: Route = async (app, req, res) => {
+  const { store, session } = await whoIsAsking(app, req);
+  const { limit } = await readJson<{ limit?: unknown }>(req);
+
+  // A role FlyCommerce adds later gets the least access until this list names it.
+  if (!ROLES_THAT_CHANGE_SETTINGS.includes(session.user_role)) {
+    throw new HttpError(403, 'not_allowed', 'Only the store owner or an admin can change this.');
+  }
+  if (typeof limit !== 'number' || !Number.isFinite(limit) || limit < 0) {
+    throw new HttpError(422, 'invalid_limit', 'The limit must be a number, 0 or more.');
+  }
+
+  app.data.setLimit(store, limit);
+  json(res, 200, { limit });
+};
+```
+
+In `src/server.ts`, add `data: new Data(env.DATA_FILE ?? 'data/order-review.json')` to the app and two routes, `'GET /api/settings': showSettings` and `'PUT /api/settings': saveSettings`. Then apply the rule in `showQueue`:
+
+```ts
+const limit = app.data.limit(asking.store);
+
+json(res, 200, { orders: orders.filter((order) => needsReview(order.total, limit)) });
+```
+
+The Settings page goes in `app-config.json`, as `{ "slug": "settings", "label": "Settings", "path": "/settings" }`, so the sidebar shows it, and in `pages` in `src/pages/main.tsx` as `'/settings': Settings`.
+
+The page is a `Field` around an `InputGroup`, with the currency as an `InputGroupAddon`:
+
+`src/pages/Settings.tsx`
+
+```tsx
+import { type FormEvent, useEffect, useState } from 'react';
+import { useAppBridge, useTitleBar } from '@flycommerce/app-bridge/react';
+import {
+  Button,
+  Card,
+  CardContent,
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+  PageHeader,
+  PageHeaderContent,
+  PageHeaderTitle,
+} from '@flycommerce/ui';
+import { useApi } from './api';
+
+export function Settings() {
+  const api = useApi();
+  const bridge = useAppBridge();
+  const [limit, setLimit] = useState('');
+  const [currency, setCurrency] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { embedded } = useTitleBar({ title: 'Settings' });
+
+  useEffect(() => {
+    api<{ limit: number; currency: string | null }>('/api/settings')
+      .then((body) => {
+        setLimit(String(body.limit));
+        setCurrency(body.currency);
+      })
+      .catch((failure: Error) => setError(failure.message));
+  }, [api]);
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      await api('/api/settings', { method: 'PUT', body: { limit: Number(limit) } });
+      setError(null);
+      bridge.toast('Limit saved', { type: 'success' }).catch(() => {});
+    } catch (failure) {
+      setError((failure as Error).message);
+    }
+  };
+
+  return (
+    <main className="flex max-w-xl min-w-0 flex-col gap-4 p-1">
+      {!embedded && (
+        <PageHeader>
+          <PageHeaderContent>
+            <PageHeaderTitle>Settings</PageHeaderTitle>
+          </PageHeaderContent>
+        </PageHeader>
+      )}
+      <Card>
+        <CardContent>
+          <form onSubmit={save} className="grid gap-4">
+            <Field>
+              <FieldLabel htmlFor="limit">Review limit</FieldLabel>
+              <InputGroup>
+                <InputGroupInput
+                  id="limit"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={limit}
+                  onChange={(e) => setLimit(e.target.value)}
+                />
+                {currency && (
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupText>{currency}</InputGroupText>
+                  </InputGroupAddon>
+                )}
+              </InputGroup>
+              <FieldDescription>New orders with a total above this amount wait in the Review queue.</FieldDescription>
+              {error && <FieldError>{error}</FieldError>}
+            </Field>
+            <Button type="submit" disabled={limit === ''} className="justify-self-start">
+              Save
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}
+```
+
+A title-bar action on the Review queue opens it with `bridge.openPage('settings')`. `src/dev.ts` passes the app a `DATA_FILE` and empties it on each start, since the emulator forgets everything when it stops. The test now sets a limit of 1000 and expects only the 1,500 order.
+
+**You should now see** two orders, 1,250 and 640, because the limit starts at 500. Set it to 1000 and one remains.
+
+Read more: [Building apps › Store data and secrets](https://developers.flycommerce.com/docs/apps).

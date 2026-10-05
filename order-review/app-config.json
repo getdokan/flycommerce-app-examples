@@ -5,6 +5,9 @@
   "quote": "Hold big orders until you've checked them",
   "appUrl": "http://localhost:4000",
   "dashboard": {
-    "pages": [{ "slug": "queue", "label": "Review queue", "path": "/queue" }]
+    "pages": [
+      { "slug": "queue", "label": "Review queue", "path": "/queue" },
+      { "slug": "settings", "label": "Settings", "path": "/settings" }
+    ]
   }
 }

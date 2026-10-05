@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import { ExampleDashboard, startFakePlatform } from '@flycommerce/app-emulator';
 import { loadAppConfig } from '@flycommerce/app-server';
 import { createApp, startServer } from './server.js';
@@ -6,8 +7,12 @@ import { createApp, startServer } from './server.js';
 const PORTS = { app: 4000, hub: 4001, store: 4002, dashboard: 4003 };
 const STORE = 'demo.flycom.shop';
 const SCOPES = ['orders.read', 'orders.write', 'webhooks.manage'];
+const DATA_FILE = 'data/dev.json';
 const appUrl = `http://localhost:${PORTS.app}`;
 const { appId, dashboard } = loadAppConfig('app-config.json');
+
+// The emulator keeps everything in memory, so the app starts from nothing too.
+fs.rmSync(DATA_FILE, { force: true });
 
 const registration = {
   appId,
@@ -25,7 +30,7 @@ for (const total of [42, 1250, 89.5, 640, 15]) {
 // The merchant approves the install, so the store lets the app act for its users.
 platform.hub.install(appId, { store: STORE, scopes: SCOPES });
 
-const app = createApp({ ...platform.env, FRAME_ANCESTORS: `http://127.0.0.1:${PORTS.dashboard}` });
+const app = createApp({ ...platform.env, DATA_FILE, FRAME_ANCESTORS: `http://127.0.0.1:${PORTS.dashboard}` });
 const server = await startServer(app, PORTS.app);
 
 const dashboardServer = await ExampleDashboard.start({

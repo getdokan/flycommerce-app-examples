@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useDashboardContext, useTitleBar } from '@flycommerce/app-bridge/react';
+import { useAppBridge, useDashboardContext, useTitleBar } from '@flycommerce/app-bridge/react';
 import {
   type ColumnDef,
   DataTable,
@@ -29,11 +29,16 @@ const DESCRIPTION = 'Orders over your limit wait here until you have checked the
 
 export function ReviewQueue() {
   const api = useApi();
+  const bridge = useAppBridge();
   const locale = useDashboardContext()?.locale;
   const [me, setMe] = useState<Me | null>(null);
   const [orders, setOrders] = useState<StoreOrder[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const { embedded } = useTitleBar({ title: TITLE, subtitle: DESCRIPTION });
+  const { embedded } = useTitleBar({
+    title: TITLE,
+    subtitle: DESCRIPTION,
+    actions: [{ id: 'settings', label: 'Settings', onAction: () => void bridge.openPage('settings') }],
+  });
 
   useEffect(() => {
     const load = async () => {
