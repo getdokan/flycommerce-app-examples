@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/getdokan/flycommerce-app-examples/security/advisories/new
+    about: Please report vulnerabilities privately, never in a public issue.
+  - name: Questions about building an app
+    url: https://developers.flycommerce.com/docs/apps
+    about: The Building apps guide answers most questions.
