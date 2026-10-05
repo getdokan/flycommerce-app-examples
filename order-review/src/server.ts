@@ -10,6 +10,7 @@ import {
   sendError,
   serveWebApp,
 } from '@flycommerce/app-server';
+import { showMe } from './session.js';
 
 export interface App {
   config: AppServerConfig;
@@ -18,7 +19,9 @@ export interface App {
 
 export type Route = (app: App, req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;
 
-const routes: Record<string, Route> = {};
+const routes: Record<string, Route> = {
+  'GET /api/me': showMe,
+};
 
 export function createApp(env: NodeJS.ProcessEnv = process.env): App {
   const config = appServerConfigFromEnv(env);

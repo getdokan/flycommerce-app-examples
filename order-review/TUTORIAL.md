@@ -335,3 +335,71 @@ function freePort(): Promise<number> {
 **You should now see** the empty Review queue at http://127.0.0.1:4003/apps/queue after `npm install` and `npm run dev`, and `npm test` passes.
 
 Read more: [Building apps › Your pages in the dashboard](https://developers.flycommerce.com/docs/apps).
+
+## 2. Know who's asking
+
+**Goal:** the page greets the user and names their store, and the server trusts nothing it hasn't verified.
+
+Your page has no cookie session with your server. For every request it asks the dashboard for a **session token**, a 60-second JWT signed by FlyCommerce that names the store and the user. `authenticate()` verifies it; the store is taken from it and never from the request.
+
+`src/session.ts`
+
+```ts
+import type { IncomingMessage } from 'node:http';
+import { type DashboardSession, authenticate, json } from '@flycommerce/app-server';
+import type { Route, App } from './server.js';
+
+// FlyCommerce: verify the session token, then trust only its store — https://developers.flycommerce.com/docs/apps
+export async function whoIsAsking(app: App, req: IncomingMessage): Promise<DashboardSession> {
+  return authenticate(req, app.config);
+}
+
+export const showMe: Route = async (app, req, res) => {
+  const { store, session } = await whoIsAsking(app, req);
+  json(res, 200, { store, userId: session.sub, role: session.user_role });
+};
+```
+
+In `src/server.ts`:
+
+```ts
+const routes: Record<string, Route> = {
+  'GET /api/me': showMe,
+};
+```
+
+On the page, `bridge.fetch()` attaches a fresh session token. This hook wraps it and throws the server's message when it refuses:
+
+`src/pages/api.ts`
+
+```ts
+import { useCallback } from 'react';
+import { useAppBridge } from '@flycommerce/app-bridge/react';
+
+/** Calls this app's own server with a fresh session token, and throws the server's message when it refuses. */
+export function useApi() {
+  const bridge = useAppBridge();
+
+  return useCallback(
+    async <T>(path: string, send?: { method: 'POST' | 'PUT'; body: unknown }): Promise<T> => {
+      const init = send && {
+        method: send.method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(send.body),
+      };
+      const response = await bridge.fetch(path, init);
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) throw new Error(body.message ?? 'Something went wrong. Try again.');
+      return body as T;
+    },
+    [bridge]
+  );
+}
+```
+
+`ReviewQueue.tsx` calls `api<Me>('/api/me')` in a `useEffect` and greets the user with `me.userId`, `me.role` and `me.store`. The test checks that a token for this app works, and that no token, or a token for another app, gets a `401`.
+
+**You should now see** "Signed in as user 1 (owner) on demo.flycom.shop." Switch the dashboard's **Role** to `admin` and it says user 2.
+
+Read more: [Building apps › Know who is asking: session tokens](https://developers.flycommerce.com/docs/apps).
