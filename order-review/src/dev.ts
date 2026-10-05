@@ -10,6 +10,7 @@ import {
   startFakePlatform,
 } from '@flycommerce/app-emulator';
 import { loadAppConfig } from '@flycommerce/app-server';
+import { catchUp, catchUpEveryHour } from './catch-up.js';
 import { createApp, startServer } from './server.js';
 
 const PORTS = { app: 4000, hub: 4001, store: 4002, dashboard: 4003, simulate: 4004 };
@@ -45,6 +46,7 @@ const app = createApp({
   FRAME_ANCESTORS: `http://127.0.0.1:${PORTS.dashboard}`,
 });
 const server = await startServer(app, PORTS.app);
+const stopCatchUp = catchUpEveryHour(app);
 
 // The merchant approves the install in the app store, and FlyCommerce sends them to the app's install URL.
 const { callbackUrl } = platform.hub.install(appId, { store: STORE, scopes: SCOPES });
@@ -60,8 +62,10 @@ const dashboardServer = await ExampleDashboard.start({
   port: PORTS.dashboard,
 });
 
-const placeOrder = async (total: number) => {
+const placeOrder = async (total: number, deliver = true) => {
   const order = store.addOrder({ total });
+  if (!deliver) return `Order #${order.orderNo} placed; its webhook was lost.`;
+
   const [delivery] = await platform.store.deliver(STORE, 'order.created', FakeStore.rawOrder(order));
   const answer = delivery?.status ?? 'nothing: no active subscription';
   return `Order #${order.orderNo} for ${total} placed; order.created answered ${answer}.`;
@@ -77,6 +81,27 @@ const actions: Record<string, { label: string; hint: string; run: () => Promise<
     label: 'Place a big order',
     hint: 'Over the limit: it lands in the Review queue.',
     run: () => placeOrder(1499),
+  },
+  drop: {
+    label: 'Drop a webhook',
+    hint: 'A big order whose order.created never arrives. The catch-up finds it.',
+    run: () => placeOrder(2100, false),
+  },
+  catchUp: {
+    label: 'Run the catch-up',
+    hint: 'What the hourly job does: read new orders as the app and queue the big ones.',
+    run: async () => `The catch-up queued ${await catchUp(app, STORE)} order(s).`,
+  },
+  uninstall: {
+    label: 'Uninstall the app',
+    hint: 'Nobody tells the app: the catch-up’s fresh token is refused, so it drops the store. Webhooks are suspended.',
+    run: async () => {
+      platform.hub.uninstall(appId, STORE);
+      await catchUp(app, STORE);
+      return app.config.credentials.get(STORE)
+        ? 'Uninstalled, but the app still serves the store.'
+        : 'Uninstalled. The app dropped the store.';
+    },
   },
 };
 
@@ -94,6 +119,7 @@ console.log(`
 `);
 
 process.on('SIGINT', async () => {
+  stopCatchUp();
   await Promise.all([simulate.close(), dashboardServer.close(), server.close()]);
   await platform.close();
   process.exit(0);

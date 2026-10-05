@@ -7,6 +7,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { type FakeOrder, type FakePlatform, FakeStore, startFakePlatform } from '@flycommerce/app-emulator';
 import { loadAppConfig } from '@flycommerce/app-server';
+import { catchUp } from '../src/catch-up.js';
 import { type App, createApp, startServer } from '../src/server.js';
 
 const APP_ID = loadAppConfig('app-config.json').appId;
@@ -118,6 +119,25 @@ test("shows the store's own message when it refuses", async () => {
 
   assert.equal(response.status, 422);
   assert.equal(message, `Order #${shipped.orderNo} cannot be put on hold while it is completed.`);
+});
+
+test('the catch-up queues a big order whose webhook never arrived', async () => {
+  const missed = platform.store.store(STORE).addOrder({ total: 2500 });
+
+  assert.equal(await catchUp(app, STORE), 1);
+  assert.ok((await queue()).includes(missed.id));
+});
+
+test('stops serving a store that uninstalled the app', async () => {
+  platform.hub.uninstall(APP_ID, STORE);
+  await catchUp(app, STORE);
+
+  assert.ok(!app.config.credentials.get(STORE));
+  assert.equal((await asOwner('/api/queue')).status, 403);
+
+  const order = platform.store.store(STORE).addOrder({ total: 9000 });
+  const sent = await platform.store.deliver(STORE, 'order.created', FakeStore.rawOrder(order));
+  assert.equal(sent.length, 0, 'webhooks are suspended');
 });
 
 async function placeOrder(total: number, status: FakeOrder['status'] = 'processing'): Promise<FakeOrder> {

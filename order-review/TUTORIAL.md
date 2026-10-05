@@ -843,3 +843,100 @@ test("shows the store's own message when it refuses", async () => {
 **You should now see** Hold and Release on each queued order. Hold one: it turns *on hold* and the dashboard shows a toast. Release it and it leaves the queue. Hold an order from two tabs and the second shows the store's refusal.
 
 Read more: [Building apps › Call the store API › As the user](https://developers.flycommerce.com/docs/apps).
+
+## 7. Never miss one
+
+**Goal:** an hourly job finds big orders whose webhook never arrived, and the app stops serving a store that uninstalled it.
+
+The store sends each event **once** and doesn't retry, so an app that mustn't miss an order catches up on a schedule. Nobody is logged in at 2 a.m., so the job acts **as the app**. It is also how the app learns it was uninstalled: FlyCommerce doesn't say, the store's credential just stops working. When a fresh app token is refused, `isInstallationRevoked(error)` says so, and the app deletes the store's credential and data.
+
+`src/catch-up.ts`
+
+```ts
+import { isInstallationRevoked } from '@flycommerce/app-server';
+import { subscribeToOrders } from './install.js';
+import type { StoreOrder } from './orders.js';
+import { needsReview } from './rule.js';
+import type { App } from './server.js';
+
+const HOUR = 60 * 60 * 1000;
+
+/** Queues big orders created since the last run, as the app, in case their webhook never arrived. Returns how many. */
+export async function catchUp(app: App, store: string, now = new Date()): Promise<number> {
+  const since = app.data.caughtUpTo(store) ?? new Date(now.getTime() - HOUR).toISOString();
+  const client = app.store.asApp(store);
+  let queued = 0;
+
+  if (!app.data.webhookSecret(store)) {
+    await subscribeToOrders(app, store).catch((error) =>
+      console.error(`[order-review] could not subscribe ${store}`, error)
+    );
+  }
+
+  try {
+    // An order created since then was updated since then too; the API filters on updatedAt.
+    const orders = client.paginate<StoreOrder>('/api/v1/orders', {
+      'filters[updatedAt]': `>=${since}`,
+      sort: 'createdAt',
+    });
+
+    for await (const order of orders) {
+      const isNew = Date.parse(order.createdAt) >= Date.parse(since);
+      if (isNew && needsReview(order.total, app.data.limit(store)) && app.data.enqueue(store, order.id)) queued++;
+    }
+  } catch (error) {
+    // FlyCommerce: nobody tells an app it was uninstalled; a refused fresh token does — https://developers.flycommerce.com/docs/apps
+    if (isInstallationRevoked(error)) {
+      app.config.credentials.delete(store);
+      app.data.delete(store);
+      return 0;
+    }
+    throw error;
+  }
+
+  app.data.setCaughtUpTo(store, now.toISOString());
+  return queued;
+}
+
+export async function catchUpAll(app: App): Promise<void> {
+  for (const store of app.data.stores().filter((store) => app.config.credentials.get(store))) {
+    await catchUp(app, store).catch((error) => console.error(`[order-review] catch-up failed for ${store}`, error));
+  }
+}
+
+/** Catches up now, which also re-subscribes any store left without a webhook, then every hour. */
+export function catchUpEveryHour(app: App): () => void {
+  void catchUpAll(app);
+  const timer = setInterval(() => void catchUpAll(app), HOUR);
+  return () => clearInterval(timer);
+}
+```
+
+The job filters on `filters[updatedAt]`, the timestamp filter the API reference documents: an order created since the last run was updated since then too. It checks `createdAt` itself, so an old order that merely changed isn't queued. It runs once at startup as well, which is where the guide asks an app to reconcile its webhook subscriptions.
+
+`data.ts` gains `stores()`, `delete()` and `caughtUpTo()` / `setCaughtUpTo()`.
+
+A forgotten store is no longer served, even with a valid session token. In `whoIsAsking()`:
+
+```ts
+  const asking = await authenticate(req, app.config);
+
+  if (!app.config.credentials.get(asking.store)) {
+    throw new HttpError(403, 'not_installed', 'Order Review is not installed on this store.');
+  }
+
+  return asking;
+```
+
+`src/server.ts` starts the job with the server (`catchUpEveryHour(app)`), and so does `src/dev.ts`, whose Simulate page gains three actions: **Drop a webhook** places a big order without delivering it, **Run the catch-up** runs the job now rather than in an hour, and **Uninstall the app** calls `platform.hub.uninstall()` and runs the job.
+
+The last two tests lose a webhook and run the catch-up, then uninstall: the app stops serving the store, and `platform.store.deliver()` sends nothing because the subscription is suspended.
+
+**You should now see**, on the Simulate page: **Drop a webhook** leaves the queue as it was; **Run the catch-up** adds the order; **Uninstall the app** makes the Review queue answer "Order Review is not installed on this store", and new orders are no longer delivered.
+
+Read more: [Building apps › Do work in the background](https://developers.flycommerce.com/docs/apps) and [When an app is uninstalled or rejected](https://developers.flycommerce.com/docs/apps).
+
+## Where to go from here
+
+- Change the rule: `src/rule.ts` is the only place that decides.
+- React to another event, add a page, or run it on your own store: see [AGENTS.md](AGENTS.md) and [README.md](README.md).

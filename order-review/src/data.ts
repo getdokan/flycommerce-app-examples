@@ -16,14 +16,25 @@ interface StoreData {
   /** Every order ever queued, so a repeated delivery or a catch-up never queues it twice. */
   seen: string[];
   webhookSecret?: string;
+  caughtUpTo?: string;
 }
 
 /** What the app keeps per store, in one JSON file. The webhook secret is sealed with ENCRYPTION_KEY. */
 export class Data {
   constructor(private readonly file: string, private readonly sealer: Sealer) {}
 
+  stores(): string[] {
+    return Object.keys(this.read());
+  }
+
   add(store: string): void {
     this.update(store, () => {});
+  }
+
+  delete(store: string): void {
+    const all = this.read();
+    delete all[store];
+    this.write(all);
   }
 
   webhookSecret(store: string): string | undefined {
@@ -63,6 +74,14 @@ export class Data {
 
   dequeue(store: string, id: string): void {
     this.update(store, (data) => (data.queue = data.queue.filter((order) => order.id !== id)));
+  }
+
+  caughtUpTo(store: string): string | undefined {
+    return this.read()[store]?.caughtUpTo;
+  }
+
+  setCaughtUpTo(store: string, time: string): void {
+    this.update(store, (data) => (data.caughtUpTo = time));
   }
 
   private update(store: string, change: (data: StoreData) => unknown): void {

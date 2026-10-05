@@ -15,6 +15,7 @@ import {
   sendError,
   serveWebApp,
 } from '@flycommerce/app-server';
+import { catchUpEveryHour } from './catch-up.js';
 import { Data } from './data.js';
 import { install } from './install.js';
 import { hold, release, showQueue } from './orders.js';
@@ -95,5 +96,6 @@ if (import.meta.filename === process.argv[1]) {
   loadEnvFile();
   const app = createApp();
   const server = await startServer(app, Number(process.env.PORT ?? 4000));
+  catchUpEveryHour(app);
   console.log(`Order Review is listening on ${server.url}`);
 }
