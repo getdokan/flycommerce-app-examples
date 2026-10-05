@@ -3,23 +3,30 @@ import type { AddressInfo } from 'node:net';
 import {
   type AppConfig,
   type AppServerConfig,
+  FileCredentialStore,
   HubClient,
+  Sealer,
   StoreApi,
   appServerConfigFromEnv,
   json,
   loadAppConfig,
   loadEnvFile,
+  required,
   sendError,
   serveWebApp,
 } from '@flycommerce/app-server';
 import { Data } from './data.js';
+import { install } from './install.js';
 import { showQueue } from './orders.js';
 import { showMe } from './session.js';
 import { saveSettings, showSettings } from './settings.js';
+import { orderCreated } from './webhooks.js';
 
 export interface App {
   config: AppServerConfig;
   appConfig: AppConfig;
+  /** Where this app is reachable; the store sends webhooks here. */
+  url: string;
   hub: HubClient;
   store: StoreApi;
   data: Data;
@@ -28,6 +35,8 @@ export interface App {
 export type Route = (app: App, req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;
 
 const routes: Record<string, Route> = {
+  'GET /auth/callback': install,
+  'POST /webhooks/order-created': orderCreated,
   'GET /api/me': showMe,
   'GET /api/queue': showQueue,
   'GET /api/settings': showSettings,
@@ -35,15 +44,18 @@ const routes: Record<string, Route> = {
 };
 
 export function createApp(env: NodeJS.ProcessEnv = process.env): App {
-  const config = appServerConfigFromEnv(env);
+  const sealer = new Sealer(required(env, 'ENCRYPTION_KEY'));
+  const credentials = new FileCredentialStore(env.CREDENTIALS_FILE ?? 'data/credentials.json', { sealer });
+  const config = { ...appServerConfigFromEnv(env), credentials };
   const hub = new HubClient(config);
 
   return {
     config,
     appConfig: loadAppConfig('app-config.json', { appId: config.appId }),
+    url: required(env, 'APP_URL'),
     hub,
     store: new StoreApi(config, hub),
-    data: new Data(env.DATA_FILE ?? 'data/order-review.json'),
+    data: new Data(env.DATA_FILE ?? 'data/order-review.json', sealer),
   };
 }
 

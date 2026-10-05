@@ -1,15 +1,39 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { Sealer } from '@flycommerce/app-server';
 
 export const DEFAULT_LIMIT = 500;
+const REMEMBERED_ORDERS = 1000;
+
+export interface QueuedOrder {
+  id: string;
+  queuedAt: string;
+}
 
 interface StoreData {
   limit: number;
+  queue: QueuedOrder[];
+  /** Every order ever queued, so a repeated delivery or a catch-up never queues it twice. */
+  seen: string[];
+  webhookSecret?: string;
 }
 
-/** Everything the app keeps, per store, in one JSON file. */
+/** What the app keeps per store, in one JSON file. The webhook secret is sealed with ENCRYPTION_KEY. */
 export class Data {
-  constructor(private readonly file: string) {}
+  constructor(private readonly file: string, private readonly sealer: Sealer) {}
+
+  add(store: string): void {
+    this.update(store, () => {});
+  }
+
+  webhookSecret(store: string): string | undefined {
+    const sealed = this.read()[store]?.webhookSecret;
+    return sealed && this.sealer.open(sealed);
+  }
+
+  setWebhookSecret(store: string, secret: string): void {
+    this.update(store, (data) => (data.webhookSecret = this.sealer.seal(secret)));
+  }
 
   limit(store: string): number {
     return this.read()[store]?.limit ?? DEFAULT_LIMIT;
@@ -19,9 +43,31 @@ export class Data {
     this.update(store, (data) => (data.limit = limit));
   }
 
+  queue(store: string): QueuedOrder[] {
+    return this.read()[store]?.queue ?? [];
+  }
+
+  /** Queues the order unless it was queued before; says whether it did. */
+  enqueue(store: string, id: string): boolean {
+    let added = false;
+
+    this.update(store, (data) => {
+      if (data.seen.includes(id)) return;
+      data.queue.push({ id, queuedAt: new Date().toISOString() });
+      data.seen = [...data.seen, id].slice(-REMEMBERED_ORDERS);
+      added = true;
+    });
+
+    return added;
+  }
+
+  dequeue(store: string, id: string): void {
+    this.update(store, (data) => (data.queue = data.queue.filter((order) => order.id !== id)));
+  }
+
   private update(store: string, change: (data: StoreData) => unknown): void {
     const all = this.read();
-    const data = all[store] ?? { limit: DEFAULT_LIMIT };
+    const data = all[store] ?? { limit: DEFAULT_LIMIT, queue: [], seen: [] };
     change(data);
     all[store] = data;
     this.write(all);

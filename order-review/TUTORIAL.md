@@ -696,3 +696,98 @@ A title-bar action on the Review queue opens it with `bridge.openPage('settings'
 **You should now see** two orders, 1,250 and 640, because the limit starts at 500. Set it to 1000 and one remains.
 
 Read more: [Building apps › Store data and secrets](https://developers.flycommerce.com/docs/apps).
+
+## 5. React to new orders
+
+**Goal:** when a big order is placed, the store tells the app and the order lands in the queue, with nobody on the page.
+
+Two things happen here. **The install:** when a merchant approves your app, FlyCommerce sends them to your install URL with a one-time code, and `handleInstall()` trades it for **that store's credential**. **Webhooks:** with that credential the app acts **as the app** and subscribes to `order.created`. `onInstalled` runs before the merchant is sent back, so the subscription exists by the time they land on your page. `reconcileWebhook()` replaces any old subscription for the same endpoint, since a secret is shown only once.
+
+`src/install.ts`
+
+```ts
+import { handleInstall, reconcileWebhook } from '@flycommerce/app-server';
+import type { App, Route } from './server.js';
+
+export const install: Route = async (app, _req, res, url) => {
+  await handleInstall(url, res, {
+    hub: app.hub,
+    credentials: app.config.credentials,
+    frameAncestors: app.config.frameAncestors,
+    appName: 'Order Review',
+    onInstalled: async (store) => {
+      app.data.add(store);
+      await subscribeToOrders(app, store);
+    },
+  });
+};
+
+// FlyCommerce: an app subscribes to webhooks itself, as the app — https://developers.flycommerce.com/docs/apps
+export async function subscribeToOrders(app: App, store: string): Promise<void> {
+  const endpoint = new URL(`/webhooks/order-created?store=${encodeURIComponent(store)}`, app.url).toString();
+  const subscription = { endpoint, events: ['order.created'], description: 'Order Review' };
+  const { secret } = await reconcileWebhook(app.store.asApp(store), subscription);
+
+  app.data.setWebhookSecret(store, secret);
+}
+```
+
+A delivery doesn't name its store, so each store has its own endpoint, and the app trusts the store in it only once that store's secret verifies the signature. `readWebhook()` reads the store from `?store=`, checks the signature on the **raw body** before anything is parsed, and answers an unknown store and a bad signature with the same `401`. The body is a `WebhookDelivery`: `{ event, timestamp, data }`, where `data` is the order as the store keeps it, with `total` as a decimal string. Deliveries carry no ID, so the queue remembers every order it has queued and a repeat changes nothing.
+
+`src/webhooks.ts`
+
+```ts
+import { json, readWebhook } from '@flycommerce/app-server';
+import { needsReview } from './rule.js';
+import type { Route } from './server.js';
+
+// The order as the store keeps it, not as the API returns it: money is a decimal string.
+interface StoredOrder {
+  id: string;
+  total: string;
+}
+
+// FlyCommerce: the store in the URL is trusted only because the body verifies under its secret — https://developers.flycommerce.com/docs/apps
+export const orderCreated: Route = async (app, req, res) => {
+  const { store, delivery } = await readWebhook<StoredOrder>(req, (store) => app.data.webhookSecret(store));
+  const order = delivery.data;
+  const queued = needsReview(order.total, app.data.limit(store)) && app.data.enqueue(store, order.id);
+
+  json(res, 200, { queued });
+};
+```
+
+`data.ts` now keeps each store's webhook secret, sealed with the SDK's `Sealer`, and its queue: `queue`, and `seen`, every order ever queued, which makes a repeated delivery harmless:
+
+`enqueue(store, id)` adds an order only if `seen` doesn't have it yet, and says whether it did. The rest is small: `add()`, `webhookSecret()`, `setWebhookSecret()`, `queue()` and `dequeue()`.
+
+The Review queue now shows the queued orders instead of the latest 50. In `src/orders.ts`, `showQueue` reads each one as the user with `GET /api/v1/orders/{id}?include=orderGroup`, and drops one the store answers `404` for: it was deleted, so there's nothing left to review.
+
+In `src/server.ts`, the two routes join the table (`'GET /auth/callback': install` and `'POST /webhooks/order-created': orderCreated`), the store credentials are kept sealed by the SDK's `FileCredentialStore`, and the app learns its own URL for the webhook endpoint:
+
+```ts
+  const sealer = new Sealer(required(env, 'ENCRYPTION_KEY'));
+  const credentials = new FileCredentialStore(env.CREDENTIALS_FILE ?? 'data/credentials.json', { sealer });
+  const config = { ...appServerConfigFromEnv(env), credentials };
+```
+
+`src/dev.ts` completes the install the way a merchant would, and serves a **Simulate** page at http://127.0.0.1:4004 with a button for each action:
+
+```ts
+// The merchant approves the install in the app store, and FlyCommerce sends them to the app's install URL.
+const { callbackUrl } = platform.hub.install(appId, { store: STORE, scopes: SCOPES });
+await fetch(callbackUrl, { redirect: 'manual' });
+
+const placeOrder = async (total: number) => {
+  const order = store.addOrder({ total });
+  const [delivery] = await platform.store.deliver(STORE, 'order.created', FakeStore.rawOrder(order));
+  const answer = delivery?.status ?? 'nothing: no active subscription';
+  return `Order #${order.orderNo} for ${total} placed; order.created answered ${answer}.`;
+};
+```
+
+The emulator's store signs and delivers `order.created` the way a real store does, so the tests use it as is: `placeOrder()` adds an order and calls `platform.store.deliver(STORE, 'order.created', FakeStore.rawOrder(order))`. Three new tests check that the install subscribed, that a big order is queued and a small one isn't, and that a repeated delivery queues once while a forged one gets a `401`.
+
+**You should now see** an empty queue: the seeded orders came before the install. On the Simulate page, **Place a big order** and reload the Review queue; **Place an order** under the limit and nothing changes.
+
+Read more: [Building apps › Install: exchange the code](https://developers.flycommerce.com/docs/apps) and [Receive webhooks](https://developers.flycommerce.com/docs/apps).
