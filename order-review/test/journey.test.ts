@@ -99,8 +99,29 @@ test('the same delivery twice queues the order once, and a forged one is refused
   assert.equal(forged.status, 401);
 });
 
-async function placeOrder(total: number): Promise<FakeOrder> {
-  const order = platform.store.store(STORE).addOrder({ total });
+test('holds and releases an order as the user', async () => {
+  const [id] = await queue();
+
+  assert.equal((await asOwner('/api/queue/hold', { method: 'POST', body: { orderId: id } })).status, 200);
+  assert.equal(platform.store.store(STORE).order(id)?.status, 'on_hold');
+
+  assert.equal((await asOwner('/api/queue/release', { method: 'POST', body: { orderId: id } })).status, 200);
+  assert.equal(platform.store.store(STORE).order(id)?.status, 'processing');
+  assert.ok(!(await queue()).includes(id));
+});
+
+test("shows the store's own message when it refuses", async () => {
+  const shipped = await placeOrder(5000, 'completed');
+  const response = await asOwner('/api/queue/hold', { method: 'POST', body: { orderId: shipped.id } });
+
+  const { message } = await response.json();
+
+  assert.equal(response.status, 422);
+  assert.equal(message, `Order #${shipped.orderNo} cannot be put on hold while it is completed.`);
+});
+
+async function placeOrder(total: number, status: FakeOrder['status'] = 'processing'): Promise<FakeOrder> {
+  const order = platform.store.store(STORE).addOrder({ total, status });
   const [delivery] = await platform.store.deliver(STORE, 'order.created', FakeStore.rawOrder(order));
 
   assert.equal(delivery?.status, 200);

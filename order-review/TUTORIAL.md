@@ -791,3 +791,55 @@ The emulator's store signs and delivers `order.created` the way a real store doe
 **You should now see** an empty queue: the seeded orders came before the install. On the Simulate page, **Place a big order** and reload the Review queue; **Place an order** under the limit and nothing changes.
 
 Read more: [Building apps › Install: exchange the code](https://developers.flycommerce.com/docs/apps) and [Receive webhooks](https://developers.flycommerce.com/docs/apps).
+
+## 6. Hold and release
+
+**Goal:** Hold and Release buttons on each queued order, acting as the user, with the store's own explanation when it refuses.
+
+Holding is a store action, so the app asks the store **as the user** who clicked. The store checks that user's permissions, records them as the actor and applies its rules: a shipped order can't be held. The app re-implements none of that; `StoreApi` turns a `403` or `422` into an error carrying the store's message, and `sendError()` hands it to the page.
+
+**Release** means "I've checked it": it takes the order off hold if it's held, and removes it from the queue. Both accept only an order in this store's queue, and answer with the queue as it is now. Add to `src/orders.ts`:
+
+```ts
+export const hold: Route = async (app, req, res) => {
+  const asking = await whoIsAsking(app, req);
+  const id = await queuedOrderId(app, asking, req);
+
+  await app.store.asUser(asking).request('PATCH', orderPath(id, '/on-hold'));
+
+  json(res, 200, { orders: await queuedOrders(app, asking) });
+};
+
+export const release: Route = async (app, req, res) => {
+  const asking = await whoIsAsking(app, req);
+  const id = await queuedOrderId(app, asking, req);
+  const store = app.store.asUser(asking);
+  const { data: order } = await store.get<{ data: StoreOrder }>(orderPath(id));
+
+  if (order.status === 'on_hold') {
+    await store.request('PATCH', orderPath(id, '/remove-hold'));
+  }
+  app.data.dequeue(asking.store, id);
+
+  json(res, 200, { orders: await queuedOrders(app, asking) });
+};
+```
+
+`queuedOrderId()` reads `orderId` from the body and answers `404` unless it's in this store's queue. Add `'POST /api/queue/hold': hold` and `'POST /api/queue/release': release` to the route table. In `ReviewQueue.tsx`, an `actions` column gives each row a Hold and a Release `Button`. Both post `{ orderId }` and replace the list with the answer; a success shows `bridge.toast()` in the dashboard's own style, and a refusal puts the store's message in the `Alert` above the table.
+
+The tests hold and release an order, and try to hold one that has shipped:
+
+```ts
+test("shows the store's own message when it refuses", async () => {
+  const shipped = await placeOrder(5000, 'completed');
+  const response = await asOwner('/api/queue/hold', { method: 'POST', body: { orderId: shipped.id } });
+  const { message } = await response.json();
+
+  assert.equal(response.status, 422);
+  assert.equal(message, `Order #${shipped.orderNo} cannot be put on hold while it is completed.`);
+});
+```
+
+**You should now see** Hold and Release on each queued order. Hold one: it turns *on hold* and the dashboard shows a toast. Release it and it leaves the queue. Hold an order from two tabs and the second shows the store's refusal.
+
+Read more: [Building apps › Call the store API › As the user](https://developers.flycommerce.com/docs/apps).

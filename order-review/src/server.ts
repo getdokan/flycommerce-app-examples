@@ -17,7 +17,7 @@ import {
 } from '@flycommerce/app-server';
 import { Data } from './data.js';
 import { install } from './install.js';
-import { showQueue } from './orders.js';
+import { hold, release, showQueue } from './orders.js';
 import { showMe } from './session.js';
 import { saveSettings, showSettings } from './settings.js';
 import { orderCreated } from './webhooks.js';
@@ -39,6 +39,8 @@ const routes: Record<string, Route> = {
   'POST /webhooks/order-created': orderCreated,
   'GET /api/me': showMe,
   'GET /api/queue': showQueue,
+  'POST /api/queue/hold': hold,
+  'POST /api/queue/release': release,
   'GET /api/settings': showSettings,
   'PUT /api/settings': saveSettings,
 };

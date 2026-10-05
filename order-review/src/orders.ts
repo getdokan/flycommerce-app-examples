@@ -1,4 +1,5 @@
-import { type DashboardSession, StoreApiError, json } from '@flycommerce/app-server';
+import type { IncomingMessage } from 'node:http';
+import { type DashboardSession, HttpError, StoreApiError, json, readJson } from '@flycommerce/app-server';
 import type { App, Route } from './server.js';
 import { whoIsAsking } from './session.js';
 
@@ -14,6 +15,29 @@ export interface StoreOrder {
 
 export const showQueue: Route = async (app, req, res) => {
   const asking = await whoIsAsking(app, req);
+  json(res, 200, { orders: await queuedOrders(app, asking) });
+};
+
+export const hold: Route = async (app, req, res) => {
+  const asking = await whoIsAsking(app, req);
+  const id = await queuedOrderId(app, asking, req);
+
+  await app.store.asUser(asking).request('PATCH', orderPath(id, '/on-hold'));
+
+  json(res, 200, { orders: await queuedOrders(app, asking) });
+};
+
+export const release: Route = async (app, req, res) => {
+  const asking = await whoIsAsking(app, req);
+  const id = await queuedOrderId(app, asking, req);
+  const store = app.store.asUser(asking);
+  const { data: order } = await store.get<{ data: StoreOrder }>(orderPath(id));
+
+  if (order.status === 'on_hold') {
+    await store.request('PATCH', orderPath(id, '/remove-hold'));
+  }
+  app.data.dequeue(asking.store, id);
+
   json(res, 200, { orders: await queuedOrders(app, asking) });
 };
 
@@ -36,6 +60,16 @@ async function queuedOrders(app: App, asking: DashboardSession): Promise<StoreOr
   );
 
   return orders.filter((order) => order !== null);
+}
+
+async function queuedOrderId(app: App, asking: DashboardSession, req: IncomingMessage): Promise<string> {
+  const { orderId } = await readJson<{ orderId?: unknown }>(req);
+
+  if (typeof orderId !== 'string' || !app.data.queue(asking.store).some((order) => order.id === orderId)) {
+    throw new HttpError(404, 'not_in_queue', 'That order is not in the review queue.');
+  }
+
+  return orderId;
 }
 
 function orderPath(id: string, action = ''): string {
