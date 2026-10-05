@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useTitleBar } from '@flycommerce/app-bridge/react';
+import { useDashboardContext, useTitleBar } from '@flycommerce/app-bridge/react';
 import {
-  Alert,
-  AlertDescription,
-  Card,
+  type ColumnDef,
+  DataTable,
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -14,7 +13,9 @@ import {
   PageHeaderContent,
   PageHeaderDescription,
   PageHeaderTitle,
+  StatusBadge,
 } from '@flycommerce/ui';
+import type { StoreOrder } from '../orders';
 import { useApi } from './api';
 
 interface Me {
@@ -28,15 +29,39 @@ const DESCRIPTION = 'Orders over your limit wait here until you have checked the
 
 export function ReviewQueue() {
   const api = useApi();
+  const locale = useDashboardContext()?.locale;
   const [me, setMe] = useState<Me | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [orders, setOrders] = useState<StoreOrder[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { embedded } = useTitleBar({ title: TITLE, subtitle: DESCRIPTION });
 
   useEffect(() => {
-    api<Me>('/api/me')
-      .then(setMe)
-      .catch((failure: Error) => setError(failure.message));
+    const load = async () => {
+      setMe(await api<Me>('/api/me'));
+      setOrders((await api<{ orders: StoreOrder[] }>('/api/queue')).orders);
+    };
+    load().catch((failure: Error) => setLoadError(failure.message));
   }, [api]);
+
+  const columns: ColumnDef<StoreOrder>[] = [
+    { accessorKey: 'orderNo', header: 'Order', cell: ({ row }) => `#${row.original.orderNo}` },
+    {
+      accessorKey: 'createdAt',
+      header: 'Placed',
+      cell: ({ row }) => new Date(row.original.createdAt).toLocaleString(locale),
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => <StatusBadge status={row.original.status.replace('_', ' ')} />,
+    },
+    {
+      accessorKey: 'total',
+      header: 'Total',
+      meta: { align: 'end' },
+      cell: ({ row }) => money(row.original, locale),
+    },
+  ];
 
   return (
     <main className="flex min-w-0 flex-col gap-4 p-1">
@@ -53,22 +78,29 @@ export function ReviewQueue() {
           Signed in as user {me.userId} ({me.role}) on {me.store}.
         </p>
       )}
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      <Card>
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Icon name="orders" />
-            </EmptyMedia>
-            <EmptyTitle>Nothing to check</EmptyTitle>
-            <EmptyDescription>New orders over your limit will appear here.</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </Card>
+      <DataTable
+        columns={columns}
+        data={orders ?? []}
+        getRowId={(order) => order.id}
+        loading={orders === null && !loadError}
+        error={loadError ?? undefined}
+        empty={
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Icon name="orders" />
+              </EmptyMedia>
+              <EmptyTitle>Nothing to check</EmptyTitle>
+              <EmptyDescription>New orders over your limit will appear here.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        }
+      />
     </main>
   );
+}
+
+function money(order: StoreOrder, locale?: string): string {
+  const currency = order.orderGroup?.currency ?? 'USD';
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(order.total);
 }

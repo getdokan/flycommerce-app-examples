@@ -403,3 +403,77 @@ export function useApi() {
 **You should now see** "Signed in as user 1 (owner) on demo.flycom.shop." Switch the dashboard's **Role** to `admin` and it says user 2.
 
 Read more: [Building apps › Know who is asking: session tokens](https://developers.flycommerce.com/docs/apps).
+
+## 3. Read orders
+
+**Goal:** the page lists the store's latest orders, read from the store API **as the user** who opened it.
+
+**As the user**, your server trades the page's session token at the store for 15 minutes of access, and the store allows only what both your app and that user may do. (**As the app** comes in step 5.) `StoreApi` does both and caches the tokens. Relations are opt-in, so `include=orderGroup` asks for the currency.
+
+`src/orders.ts`
+
+```ts
+import { json } from '@flycommerce/app-server';
+import type { Route } from './server.js';
+import { whoIsAsking } from './session.js';
+
+/** The fields of a store order this app uses. The store sends more. */
+export interface StoreOrder {
+  id: string;
+  orderNo: number;
+  status: string;
+  total: number;
+  createdAt: string;
+  orderGroup?: { currency: string };
+}
+
+// FlyCommerce: as the user, the store decides what this user may do — https://developers.flycommerce.com/docs/apps
+export const showQueue: Route = async (app, req, res) => {
+  const asking = await whoIsAsking(app, req);
+  const { data: orders } = await app.store
+    .asUser(asking)
+    .get<{ data: StoreOrder[] }>('/api/v1/orders', { include: 'orderGroup', limit: 50 });
+
+  json(res, 200, { orders });
+};
+```
+
+In `src/server.ts`, add `'GET /api/queue': showQueue` to the routes, and give the app a `HubClient` (FlyCommerce's token endpoint) and a `StoreApi`:
+
+```ts
+  const config = appServerConfigFromEnv(env);
+  const hub = new HubClient(config);
+
+  return {
+    config,
+    appConfig: loadAppConfig('app-config.json', { appId: config.appId }),
+    hub,
+    store: new StoreApi(config, hub),
+  };
+```
+
+The store lets an app act for its users only once the merchant has approved the install, so `src/dev.ts` seeds five orders dated two days back, from before the install, and approves it with `platform.hub.install(appId, { store: STORE, scopes: SCOPES })`.
+
+`ReviewQueue.tsx` loads the orders after `/api/me` and lists them in a `DataTable`, which brings the loading, error and empty states, and scrolls inside its card on a phone. The columns are TanStack `ColumnDef`s; dates and money follow the dashboard's language from `useDashboardContext()?.locale`:
+
+```tsx
+const columns: ColumnDef<StoreOrder>[] = [
+  { accessorKey: 'orderNo', header: 'Order', cell: ({ row }) => `#${row.original.orderNo}` },
+```
+
+```tsx
+<DataTable
+  columns={columns}
+  data={orders ?? []}
+  getRowId={(order) => order.id}
+  loading={orders === null && !loadError}
+  error={loadError ?? undefined}
+```
+
+The `Empty` state from step 1 moves into its `empty` prop.
+
+The test checks that the store saw the call as user 1: `platform.store.requests.at(-1)?.userId` is `'1'`.
+
+**You should now see** all five seeded orders: there's no rule yet.
+
+Read more: [Building apps › Call the store API](https://developers.flycommerce.com/docs/apps).

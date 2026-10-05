@@ -3,6 +3,8 @@ import type { AddressInfo } from 'node:net';
 import {
   type AppConfig,
   type AppServerConfig,
+  HubClient,
+  StoreApi,
   appServerConfigFromEnv,
   json,
   loadAppConfig,
@@ -10,25 +12,32 @@ import {
   sendError,
   serveWebApp,
 } from '@flycommerce/app-server';
+import { showQueue } from './orders.js';
 import { showMe } from './session.js';
 
 export interface App {
   config: AppServerConfig;
   appConfig: AppConfig;
+  hub: HubClient;
+  store: StoreApi;
 }
 
 export type Route = (app: App, req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;
 
 const routes: Record<string, Route> = {
   'GET /api/me': showMe,
+  'GET /api/queue': showQueue,
 };
 
 export function createApp(env: NodeJS.ProcessEnv = process.env): App {
   const config = appServerConfigFromEnv(env);
+  const hub = new HubClient(config);
 
   return {
     config,
     appConfig: loadAppConfig('app-config.json', { appId: config.appId }),
+    hub,
+    store: new StoreApi(config, hub),
   };
 }
 

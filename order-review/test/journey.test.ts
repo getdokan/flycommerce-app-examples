@@ -7,6 +7,7 @@ import { createApp, startServer } from '../src/server.js';
 
 const APP_ID = loadAppConfig('app-config.json').appId;
 const STORE = 'demo.flycom.shop';
+const SCOPES = ['orders.read', 'orders.write', 'webhooks.manage'];
 
 let platform: FakePlatform;
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -48,6 +49,14 @@ test('knows which store and user is asking, and refuses anyone else', async () =
   assert.equal((await fetch(`${server.url}/api/me`, { headers: { Authorization: `Bearer ${otherApp}` } })).status, 401);
 });
 
+test("lists the store's orders as the user", async () => {
+  platform.hub.install(APP_ID, { store: STORE, scopes: SCOPES });
+  const order = platform.store.store(STORE).addOrder({ total: 1500 });
+
+  assert.deepEqual(await queue(), [order.id]);
+  assert.equal(platform.store.requests.at(-1)?.userId, '1', 'the orders are read as the user');
+});
+
 function asOwner(pathname: string, send?: { method: string; body: unknown }): Promise<Response> {
   const token = platform.hub.sessionToken({ appId: APP_ID, store: STORE, userId: '1', role: 'owner' });
 
@@ -56,6 +65,11 @@ function asOwner(pathname: string, send?: { method: string; body: unknown }): Pr
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: send && JSON.stringify(send.body),
   });
+}
+
+async function queue(): Promise<string[]> {
+  const { orders } = await (await asOwner('/api/queue')).json();
+  return orders.map((order: { id: string }) => order.id);
 }
 
 function freePort(): Promise<number> {
