@@ -10,7 +10,7 @@ Complete, working example apps for [FlyCommerce](https://flycommerce.com). Each 
 
 | Example | What it shows | Status |
 | --- | --- | --- |
-| `reference-crm` | The reference app: install, session tokens, pages built with `@flycommerce/ui`, calling the store as the user and as the app, webhooks, a background job. Start here. | Coming |
+| [`order-review`](order-review) | Hold big orders until you've checked them: install, session tokens, pages built with `@flycommerce/ui`, calling the store as the user and as the app, webhooks, an hourly catch-up job and uninstall handling. Comes with a step-by-step tutorial. Start here. | Preview: installs once the SDK is on npm |
 
 Each example is a folder you can copy out and run on its own.
 
@@ -27,11 +27,14 @@ Build with Claude Code: `/plugin marketplace add getdokan/flycommerce-sdk`, then
 ```
 <example>/
   src/
-    server/          Node backend: install, API routes, webhooks, jobs
-    dashboard/       React pages shown inside the merchant's dashboard
+    server.ts        Node backend: every route in one table
+    *.ts             install, session, webhooks, jobs, data: one concept per file
+    pages/           React pages shown inside the merchant's dashboard
+  test/              tests against @flycommerce/app-emulator
   app-config.json    the app's dashboard pages, released from the developer portal
   .env.example       every environment variable, explained
   README.md          what it shows, how to run it, what to read next
+  AGENTS.md          the same, for coding agents
   package.json
 ```
 
