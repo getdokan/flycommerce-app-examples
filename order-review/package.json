@@ -1,0 +1,41 @@
+{
+  "name": "order-review",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hold big orders until you've checked them: a FlyCommerce example app.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite build && tsx src/dev.ts",
+    "build": "tsc && vite build",
+    "start": "node dist/server.js",
+    "test": "vite build && node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@flycommerce/app-bridge": "^0.1.0",
+    "@flycommerce/app-server": "^0.1.0",
+    "@flycommerce/ui": "^0.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@flycommerce/app-emulator": "^0.1.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.2"
+  },
+  "prettier": {
+    "singleQuote": true,
+    "printWidth": 120,
+    "trailingComma": "es5"
+  }
+}

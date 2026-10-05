@@ -1,0 +1,10 @@
+{
+  "appId": "order-review",
+  "versionId": 1,
+  "version": "1.0.0",
+  "quote": "Hold big orders until you've checked them",
+  "appUrl": "http://localhost:4000",
+  "dashboard": {
+    "pages": [{ "slug": "queue", "label": "Review queue", "path": "/queue" }]
+  }
+}

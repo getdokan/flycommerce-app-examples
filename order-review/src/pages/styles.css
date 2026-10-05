@@ -1,0 +1,7 @@
+@import 'tailwindcss';
+@import '@flycommerce/ui/tailwind.css';
+@import '@flycommerce/ui/fonts.css';
+
+html[data-embedded] body {
+  background: transparent;
+}
