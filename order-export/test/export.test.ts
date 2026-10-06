@@ -13,6 +13,7 @@ const APP_ID = loadAppConfig('app-config.json').appId;
 const STORE = 'demo.flycom.shop';
 const OCT_1 = '2026-10-01T00:00:00.000Z';
 const OCT_2 = '2026-10-02T00:00:00.000Z';
+const OCT_3 = '2026-10-03T00:00:00.000Z';
 
 let platform: FakePlatform;
 let app: App;
@@ -66,14 +67,48 @@ test('refuses a request without a session token from this app', async () => {
   assert.equal(response.status, 401);
 });
 
-test('answers the page with a CSV file', async () => {
+test('exports every order in the period, oldest first, as the user', async () => {
+  const store = platform.store.store(STORE);
+  store.addOrder({ createdAt: '2026-09-30T23:59:59.000Z' });
+  // More than one page: the export has to keep asking until the store runs out.
+  for (let i = 0; i < 60; i++) {
+    store.addOrder({ total: 10 + i, createdAt: new Date(Date.parse(OCT_1) + i * 60_000).toISOString() });
+  }
+  store.addOrder({ createdAt: OCT_2 });
+
   const response = await exportAsOwner(OCT_1, OCT_2);
   const bytes = new Uint8Array(await response.arrayBuffer());
+  const lines = new TextDecoder().decode(bytes).trimEnd().split('\r\n');
 
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type') ?? '', /^text\/csv/);
   assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf], 'a byte-order mark, so Excel reads UTF-8');
-  assert.equal(new TextDecoder().decode(bytes), 'Order,Placed,Customer,Email,Status,Total,Currency\r\n');
+  assert.equal(lines[0], 'Order,Placed,Customer,Email,Status,Total,Currency');
+  assert.equal(lines.length, 61, 'the header and the 60 orders placed on October 1');
+  assert.match(lines[1], /,2026-10-01T00:00:00.000Z,Nadia Rahman,buyer\d+@example.test,processing,10,USD$/);
+  assert.equal(platform.store.requests.at(-1)?.userId, '1', 'orders are read as the user');
+});
+
+test('keeps names a spreadsheet would misread as text', async () => {
+  const store = platform.store.store(STORE);
+  store.addOrder({ firstName: 'Sam', lastName: 'O"Neil, Jr', createdAt: '2026-10-02T09:00:00.000Z' });
+  store.addOrder({
+    firstName: '=HYPERLINK("https://example.test")',
+    lastName: 'Test',
+    createdAt: '2026-10-02T10:00:00.000Z',
+  });
+
+  const csv = await (await exportAsOwner(OCT_2, OCT_3)).text();
+
+  assert.ok(csv.includes(',"Sam O""Neil, Jr",'), csv);
+  assert.ok(csv.includes(`,"'=HYPERLINK(""https://example.test"") Test",`), csv);
+});
+
+test('refuses a period that ends before it starts', async () => {
+  const response = await exportAsOwner(OCT_2, OCT_1);
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).message, 'Choose a start date on or before the end date.');
 });
 
 function exportAsOwner(from: string, to: string): Promise<Response> {
