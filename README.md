@@ -10,7 +10,8 @@ Complete, working example apps for [FlyCommerce](https://flycommerce.com). Each 
 
 | Example | What it shows | Status |
 | --- | --- | --- |
-| [`order-review`](order-review) | Hold big orders until you've checked them: install, session tokens, pages built with `@flycommerce/ui`, calling the store as the user and as the app, webhooks, an hourly catch-up job and uninstall handling. Comes with a step-by-step tutorial. Start here. | Preview: installs once the SDK is on npm |
+| [`order-export`](order-export) | Download a store's orders as a CSV file. The three things every app does: install, know who's asking (session tokens), and read the store, a page at a time. One page built with `@flycommerce/ui`, no database. Comes with a three-step tutorial. **Start here.** | Preview: installs once the SDK is on npm |
+| [`order-review`](order-review) | Hold big orders until you've checked them: webhooks, changing orders in the store, a setting per store, an hourly catch-up job and uninstall handling. Read it after `order-export`. | Preview: installs once the SDK is on npm |
 
 Each example is a folder you can copy out and run on its own.
 
