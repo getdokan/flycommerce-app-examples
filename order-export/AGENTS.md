@@ -1,20 +1,28 @@
 # Order Export: notes for coding agents
 
-A FlyCommerce example app. A page inside the merchant's dashboard downloads the orders placed in a period as a CSV file. Plain TypeScript on Node 22+ (ESM), `node:http`, React 19 and `@flycommerce/ui`. No framework, no database, no webhooks.
+A FlyCommerce example app. A page inside the merchant's dashboard downloads the orders placed in a period as a CSV file. The merchant chooses the columns, and a Settings page keeps the file name format and the default columns per store. Plain TypeScript on Node 22+ (ESM), `node:http`, React 19 and `@flycommerce/ui`. No framework, no database (settings live in one JSON file), no webhooks.
 
 ## Files
 
-| File                         | What it does                                                                                           |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `src/server.ts`              | Both routes in one table; `createApp()` wires config, sealed credentials and the SDK clients           |
-| `src/install.ts`             | Install redirect: `handleInstall()` keeps the store's credential                                       |
-| `src/session.ts`             | `whoIsAsking()`: verifies the session token and refuses stores the app no longer serves                |
-| `src/export.ts`              | `GET /api/export?from&to`: `paginate()` the orders as the user, oldest first, stop at `to`, answer CSV |
-| `src/csv.ts`                 | `toCsv()`: quoting, the formula guard, and a byte-order mark for Excel                                 |
-| `src/pages/ExportOrders.tsx` | The page: `DateRangePicker`, a button, and a download through `bridge.fetch()`                         |
-| `src/dev.ts`                 | `npm run dev`: emulator with sample orders, the app, and the example dashboard on ports 4000-4003      |
-| `test/export.test.ts`        | Against the emulator: install, session check, paging past one page, CSV safety, a bad period           |
-| `app-config.json`            | The app's one dashboard page, uploaded to the developer portal on each release                         |
+| File                         | What it does                                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `src/server.ts`              | Every route in one table; `createApp()` wires config, sealed credentials, settings and the SDK clients          |
+| `src/install.ts`             | Install redirect: `handleInstall()` keeps the store's credential                                                |
+| `src/session.ts`             | `whoIsAsking()`: verifies the session token and refuses stores the app no longer serves                         |
+| `src/export.ts`              | `GET /api/export?from&to&columns`: `paginate()` the orders as the user, oldest first, stop at `to`, answer CSV  |
+| `src/columns.ts`             | `StoreOrder` and `COLUMNS`: each column's key, header and value; the file's column order. Shared with the pages |
+| `src/csv.ts`                 | `toCsv()`: quoting, the formula guard, and a byte-order mark for Excel                                          |
+| `src/settings.ts`            | `GET`/`PUT /api/settings`; `checkColumns()` and the file name format check, both 400 with a message             |
+| `src/data.ts`                | `Data`: per-store settings in `DATA_FILE`, defaults when a store has none, written atomically                   |
+| `src/pages/main.tsx`         | Picks the page by `window.location.pathname`                                                                    |
+| `src/pages/ExportOrders.tsx` | The export page: `DateRangePicker`, the columns, and a download through `bridge.fetch()`                        |
+| `src/pages/Settings.tsx`     | The settings page: file name format with a preview, default columns, Save with a toast                          |
+| `src/pages/ColumnChoice.tsx` | The column checkboxes, drawn from `COLUMNS`                                                                     |
+| `src/pages/api.ts`           | `useApi()`: JSON calls to the app's server that throw the server's message                                      |
+| `src/pages/fileName.ts`      | Fills in `{store}`, `{from}`, `{to}` and replaces unsafe characters with `-`; `dates.ts` has the day maths      |
+| `src/dev.ts`                 | `npm run dev`: emulator with sample orders, the app, and the example dashboard on ports 4000-4003               |
+| `test/export.test.ts`        | Against the emulator: install, session check, paging, CSV safety, a bad period, columns, settings per store     |
+| `app-config.json`            | The app's dashboard pages, uploaded to the developer portal on each release                                     |
 
 ## Commands
 
@@ -30,7 +38,7 @@ npx prettier --write .
 
 The guide is https://developers.flycommerce.com/docs/apps; the API reference is https://developers.flycommerce.com/docs. Check field names there or in `@flycommerce/app-emulator`, never by guessing.
 
-- **The store comes only from the verified session token** (`whoIsAsking()`), never from a URL, body or header.
+- **The store comes only from the verified session token** (`whoIsAsking()`), never from a URL, body or header. Settings are read and written for that store only.
 - **As the user** (`app.store.asUser(asking)`): the store decides whether this person may read orders, and its refusal is shown as it is.
 - **Paging:** `paginate()` follows the store's pages (`paginate=full`); breaking out of the loop stops asking. `filters[createdAt]` takes one bound (`>=`, `>`, `<=`, `<`), so the upper bound is applied while reading.
 - **Order fields:** the buyer's name and email are on `orderGroup.customerInfo` (ask for `include=orderGroup`), not on the address. `total` is copied as the store sends it; the app does no money arithmetic.
@@ -43,7 +51,11 @@ The guide is https://developers.flycommerce.com/docs/apps; the API reference is 
 
 ### Add a column
 
-Add the field to `StoreOrder` and its heading to `HEADER` in `src/export.ts`, then the value to `row()` in the same position. If it lives in a relation, add that relation to `include`. Update the header assertion in `test/export.test.ts`.
+Add an entry to `COLUMNS` in `src/columns.ts`: a stable `key`, the `header`, and `value()` to read it from an order. Add the field to `StoreOrder` if it's new, and if it lives in a relation, add that relation to `include` in `src/export.ts`. Its place in the list is its place in the file. The checkboxes, the server's check and the defaults follow the list; stores that already saved their default columns keep them, so it starts unchecked for them. Add the key to `ALL_COLUMNS` in `test/export.test.ts`.
+
+### Add a setting
+
+Add the field to `Settings` and `DEFAULT_SETTINGS` in `src/data.ts`, check it in `saveSettings` in `src/settings.ts` (400 with a message the page can show), and add a control for it to `src/pages/Settings.tsx`.
 
 ### Export only some orders
 

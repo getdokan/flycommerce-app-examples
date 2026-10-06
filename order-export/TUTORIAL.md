@@ -1,8 +1,8 @@
 # Build your first FlyCommerce app
 
-In three steps you'll build **Order Export**: a page inside the merchant's dashboard that downloads the orders placed in a period as a CSV file. Along the way you'll use the three things every FlyCommerce app does: install on a store, know who's asking, and read the store's data.
+In four steps you'll build **Order Export**: a page inside the merchant's dashboard that downloads the orders placed in a period as a CSV file. Along the way you'll use the three things every FlyCommerce app does: install on a store, know who's asking, and read the store's data. Then you'll let the merchant make the file their own.
 
-Each step is one commit, tagged `order-export-step-1` to `order-export-step-3`. To see the code after a step, run `git checkout order-export-step-2`.
+Each step is one commit, tagged `order-export-step-1` to `order-export-step-4`. To see the code after a step, run `git checkout order-export-step-2`.
 
 > **Preview.** The SDK packages arrive on npm with FlyCommerce's app platform launch; until then `npm install` can't fetch them.
 
@@ -66,7 +66,7 @@ export const install: Route = async (app, _req, res, url) => {
 
 The page, `src/pages/ExportOrders.tsx`, is React with [`@flycommerce/ui`](https://ui.flycommerce.com), so it looks like the rest of the dashboard: a `DateRangePicker` with presets, and a **Download CSV** button. `useTitleBar()` puts its title in the dashboard's own title bar; outside the dashboard, it shows a `PageHeader` instead.
 
-The build configuration (`package.json`, `tsconfig.json`, `vite.config.ts`, `src/pages/index.html`, `styles.css`) doesn't change after this step; copy it from the `order-export-step-1` tag.
+The build configuration (`package.json`, `tsconfig.json`, `vite.config.ts`, `src/pages/index.html`, `styles.css`) barely changes after this step (step 4 moves `@flycommerce/ui` to 0.3.1); copy it from the `order-export-step-1` tag.
 
 Run it:
 
@@ -165,9 +165,58 @@ Three things to notice:
 
 Click **Download CSV** again: one row per order, including the customers named `Sam O"Neil, Jr` and `=HYPERLINK(...)`, both kept as plain text.
 
+## 4. Let the merchant choose
+
+**Goal:** the merchant picks the columns for each export, and a Settings page keeps how the file is named and which columns are checked to start with.
+
+`src/columns.ts` lists the columns once: a stable key, the header, and how to read the value from an order. `StoreOrder` moves here too. The server writes the file from this list, and the page draws its checkboxes from it:
+
+```ts
+export const COLUMNS: Column[] = [
+  { key: 'order', header: 'Order', value: (order) => order.orderNo },
+  { key: 'placed', header: 'Placed', value: (order) => order.createdAt },
+  { key: 'customer', header: 'Customer', value: customerName },
+  // email, status, total, currency
+];
+```
+
+The page sends the chosen keys, `columns=order,placed,total`. `checkColumns()` in `src/settings.ts` accepts only keys from the list, refuses an empty choice, and answers the columns in the list's order, whatever order they were asked in:
+
+```ts
+export function checkColumns(keys: unknown): Column[] {
+  if (!Array.isArray(keys) || keys.length === 0) {
+    throw new HttpError(400, 'no_columns', 'Choose at least one column.');
+  }
+  if (keys.some((key) => !COLUMNS.some((column) => column.key === key))) {
+    const known = COLUMNS.map((column) => column.key).join(', ');
+    throw new HttpError(400, 'unknown_column', `Choose columns from: ${known}.`);
+  }
+
+  return COLUMNS.filter((column) => keys.includes(column.key));
+}
+```
+
+`exportOrders` writes their headers as the first row and `columns.map((column) => column.value(order))` for each order. `HEADER` and `row()` are gone.
+
+The settings are `GET /api/settings` and `PUT /api/settings`. Both start with `whoIsAsking()`, like every route: the store whose settings they touch comes from the session token, never the body. `src/data.ts` keeps every store's settings in one JSON file, `DATA_FILE`, and fills in the defaults for a store that hasn't saved any:
+
+```ts
+settings(store: string): Settings {
+  return { ...DEFAULT_SETTINGS, ...this.read()[store] };
+}
+```
+
+It writes a temporary file and renames it over the real one, so a crash mid-write never leaves half a file. Settings aren't secret, so unlike credentials they aren't sealed.
+
+The file name format takes `{store}`, `{from}` and `{to}`; the default, `orders-{from}-to-{to}`, gives the same name as before. Only the page knows the merchant's time zone, so the page fills in the dates and adds `.csv`. The server checks the format before saving it: at most 100 characters, and only letters, digits, spaces, `-`, `_`, `.` and the placeholders. A `/` or a line break never reaches a file name, and the page replaces any other odd character, say in a store's name, with `-`.
+
+Add `{ "slug": "settings", "label": "Settings", "path": "/settings" }` to `app-config.json`. The server sends the same bundle for every page, so `main.tsx` picks the component by `window.location.pathname`.
+
+Run `npm run dev` again. On **Settings**, change the format and watch the preview, uncheck a column or two, and **Save**. Back on **Export orders**, those columns are checked, and the file you download is named after your format.
+
 ## Test it
 
-`test/export.test.ts` runs the whole app against the emulator: the page is framed, the install keeps a credential, a request without this app's session token is refused, more than one page of orders comes back in order and is read as the user, awkward names stay text, and a backwards period is refused.
+`test/export.test.ts` runs the whole app against the emulator: the page is framed, the install keeps a credential, a request without this app's session token is refused, more than one page of orders comes back in order and is read as the user, awkward names stay text, and a backwards period is refused. Then the choices: only the chosen columns are written, in the list's order; unknown columns and unsafe file name formats are refused; and one store never sees another's settings.
 
 ```bash
 npm test
