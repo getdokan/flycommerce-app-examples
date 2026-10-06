@@ -1,0 +1,10 @@
+{
+  "appId": "order-export",
+  "versionId": 1,
+  "version": "1.0.0",
+  "quote": "Your orders, in a spreadsheet",
+  "appUrl": "http://localhost:4000",
+  "dashboard": {
+    "pages": [{ "slug": "export", "label": "Export orders", "path": "/export" }]
+  }
+}
