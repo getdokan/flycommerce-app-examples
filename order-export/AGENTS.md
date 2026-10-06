@@ -1,6 +1,6 @@
 # Order Export: notes for coding agents
 
-A FlyCommerce example app. A page inside the merchant's dashboard downloads the orders placed in a period as a CSV file. The merchant chooses the columns, and a Settings page keeps the file name format and the default columns per store. Plain TypeScript on Node 22+ (ESM), `node:http`, React 19 and `@flycommerce/ui`. No framework, no database (settings live in one JSON file), no webhooks.
+A FlyCommerce example app. A page inside the merchant's dashboard downloads the orders placed in a period as a CSV file. The merchant chooses the columns, and a Settings page keeps the file name format and the default columns per store. Plain TypeScript on Node 22+ (ESM), `node:http`, React 19 and `@flycommerce/ui`. No framework, no database (settings live in one JSON file), no webhooks. One storefront script, a welcome message, in plain JavaScript.
 
 ## Files
 
@@ -20,9 +20,12 @@ A FlyCommerce example app. A page inside the merchant's dashboard downloads the 
 | `src/pages/ColumnChoice.tsx` | The column checkboxes, drawn from `COLUMNS`                                                                     |
 | `src/pages/api.ts`           | `useApi()`: JSON calls to the app's server that throw the server's message                                      |
 | `src/pages/fileName.ts`      | Fills in `{store}`, `{from}`, `{to}` and replaces unsafe characters with `-`; `dates.ts` has the day maths      |
-| `src/dev.ts`                 | `npm run dev`: emulator with sample orders, the app, and the example dashboard on ports 4000-4003               |
+| `src/storefront.ts`          | `GET /storefront/welcome.js`: serves `storefront/welcome.js` as JavaScript                                      |
+| `storefront/welcome.js`      | The storefront script: a welcome message in a shadow root, follows `flycommerce:page`, closes with ×            |
+| `src/dev.ts`                 | `npm run dev`: emulator with sample orders, the app, and the example dashboard and storefront on 4000-4003      |
 | `test/export.test.ts`        | Against the emulator: install, session check, paging, CSV safety, a bad period, columns, settings per store     |
-| `app-config.json`            | The app's dashboard pages, uploaded to the developer portal on each release                                     |
+| `test/storefront.test.ts`    | The script is declared on the app's host, served as JavaScript, and run by the emulator's storefront            |
+| `app-config.json`            | The app's dashboard pages and storefront script, uploaded to the developer portal on each release               |
 
 ## Commands
 
@@ -45,6 +48,7 @@ The guide is https://developers.flycommerce.com/docs/apps; the API reference is 
 - **Roles:** only `owner` and `admin` open apps today. Treat any other role as the least privileged.
 - **Secrets** come from the environment; store credentials are sealed at rest. Never log tokens, secrets or customer data.
 - **Pages** follow the `@flycommerce/ui` guide (https://ui.flycommerce.com): `PageHeader` outside the dashboard, `Field` around inputs, tokens only, and `className` for layout, never to restyle.
+- **Storefront scripts** run on the store's own pages: keep to your own element in a shadow root, never read the page's cookies, storage or forms, stay small, and never assume load order. They don't run on checkout, account or sign-in pages.
 - Keep every file small, one concept each, comments only for a non-obvious why.
 
 ## Recipes
@@ -60,6 +64,10 @@ Add the field to `Settings` and `DEFAULT_SETTINGS` in `src/data.ts`, check it in
 ### Export only some orders
 
 Add the store's filter to the `paginate()` query, e.g. `'filters[status]': 'completed'`, and a control for it on the page that sends it in the URL. Read it from `url.searchParams` in `exportOrders`, and accept only the values you expect.
+
+### Change the storefront message
+
+Edit `GREETINGS` in `storefront/welcome.js`; the keys are `pageType` values (`home`, `product`, `category`, …) and `default` covers the rest. To add a second script, put the file in `storefront/`, serve it from a route in `src/storefront.ts`, and add it to `storefront.scripts` in `app-config.json` (at most 3, on `appUrl`'s host).
 
 ### Export something else
 

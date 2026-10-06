@@ -8,7 +8,7 @@ It's the smallest useful FlyCommerce app, and the place to start. It shows the t
 2. **Know who's asking:** the page calls the app's server with a session token, and the server verifies it before trusting the store it names (`src/session.ts`).
 3. **Read the store:** the server reads the orders as that user, a page at a time, and turns them into CSV (`src/export.ts`, `src/csv.ts`).
 
-Then it lets the merchant choose: the columns, defined once in `src/columns.ts`, and per-store settings kept in one JSON file (`src/settings.ts`, `src/data.ts`).
+Then it lets the merchant choose: the columns, defined once in `src/columns.ts`, and per-store settings kept in one JSON file (`src/settings.ts`, `src/data.ts`). And it greets the store's shoppers with a storefront script: a small welcome message with a close button (`storefront/welcome.js`).
 
 No webhooks, no database, no background jobs. When you need those, the [Building apps](https://developers.flycommerce.com/docs/apps) guide covers them.
 
@@ -43,15 +43,18 @@ npm test        # the export, end to end against the emulator
 | `src/pages/Settings.tsx`     | The settings page: a file name format with a live preview, and the default columns                              |
 | `src/pages/ColumnChoice.tsx` | The column checkboxes both pages share                                                                          |
 | `src/pages/fileName.ts`      | Fills in the file name format with the store and the merchant's local dates                                     |
-| `src/dev.ts`                 | `npm run dev`: the emulator, sample orders, the app and the example dashboard                                   |
+| `src/storefront.ts`          | `GET /storefront/welcome.js`: serves the storefront script                                                      |
+| `storefront/welcome.js`      | The welcome message shown on the store's pages, with a close button                                             |
+| `src/dev.ts`                 | `npm run dev`: the emulator, sample orders, the app, the example dashboard and storefront                       |
 | `test/export.test.ts`        | Install, the session check, paging, CSV safety, the chosen columns, and settings kept per store                 |
+| `test/storefront.test.ts`    | The storefront script: declared on the app's host, served as JavaScript, run by the example storefront          |
 
-[TUTORIAL.md](TUTORIAL.md) builds the app in four steps, each tagged in git (`order-export-step-1` to `-4`).
+[TUTORIAL.md](TUTORIAL.md) builds the app in five steps, each tagged in git (`order-export-step-1` to `-5`).
 
 ## Run it on a real store
 
 1. In the [developer portal](https://developers.flycommerce.com), create an app, request the `orders.read` permission, and set the install URL to `https://<your-app>/auth/callback`.
-2. Create a version, put your App ID, version and URL in `app-config.json`, and upload it to that version.
+2. Create a version, put your App ID, version and URL in `app-config.json` (the URL goes in `appUrl` and in the script's `src`), and upload it to that version.
 3. Copy `.env.example` to `.env` and fill it in. Then `npm run build && npm start`, somewhere the dashboard can reach over HTTPS.
 4. Install the app on a store you own: it's under **Apps → Your apps** until it's published.
 

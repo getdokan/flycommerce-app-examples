@@ -15,14 +15,14 @@
     "test": "vite build && node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@flycommerce/app-bridge": "^0.1.0",
-    "@flycommerce/app-server": "^0.1.0",
+    "@flycommerce/app-bridge": "^0.1.0-next.1",
+    "@flycommerce/app-server": "^0.1.0-next.1",
     "@flycommerce/ui": "^0.3.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@flycommerce/app-emulator": "^0.1.0",
+    "@flycommerce/app-emulator": "^0.1.0-next.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.20.5",
     "@types/react": "^19.2.0",

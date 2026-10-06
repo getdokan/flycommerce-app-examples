@@ -8,9 +8,9 @@ Complete, working example apps for [FlyCommerce](https://flycommerce.com). Each 
 
 ## Examples
 
-| Example | What it shows | Status |
-| --- | --- | --- |
-| [`order-export`](order-export) | Download a store's orders as a CSV file. The three things every app does: install, know who's asking (session tokens), and read the store, a page at a time. Then a column choice and a Settings page, saved per store. Pages built with `@flycommerce/ui`, no database. Comes with a four-step tutorial. **Start here.** | Preview: installs once the SDK is on npm |
+| Example                        | What it shows                                                                                                                                                                                                                                                                                                                                                      | Status                        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------- |
+| [`order-export`](order-export) | Download a store's orders as a CSV file. The three things every app does: install, know who's asking (session tokens), and read the store, a page at a time. Then a column choice and a Settings page, saved per store, and a welcome message on the storefront. Pages built with `@flycommerce/ui`, no database. Comes with a five-step tutorial. **Start here.** | Preview: SDK from npm `@next` |
 
 Each example is a folder you can copy out and run on its own.
 
