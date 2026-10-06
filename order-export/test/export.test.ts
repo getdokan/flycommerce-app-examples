@@ -11,6 +11,8 @@ import { type App, createApp, startServer } from '../src/server.js';
 
 const APP_ID = loadAppConfig('app-config.json').appId;
 const STORE = 'demo.flycom.shop';
+const OCT_1 = '2026-10-01T00:00:00.000Z';
+const OCT_2 = '2026-10-02T00:00:00.000Z';
 
 let platform: FakePlatform;
 let app: App;
@@ -53,6 +55,33 @@ test('installs: keeps the store credential', async () => {
   assert.equal(response.status, 200);
   assert.ok(app.config.credentials.get(STORE));
 });
+
+test('refuses a request without a session token from this app', async () => {
+  assert.equal((await fetch(`${server.url}/api/export?from=${OCT_1}&to=${OCT_2}`)).status, 401);
+
+  const otherApp = platform.hub.sessionToken({ appId: 'another-app', store: STORE });
+  const response = await fetch(`${server.url}/api/export?from=${OCT_1}&to=${OCT_2}`, {
+    headers: { Authorization: `Bearer ${otherApp}` },
+  });
+  assert.equal(response.status, 401);
+});
+
+test('answers the page with a CSV file', async () => {
+  const response = await exportAsOwner(OCT_1, OCT_2);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /^text\/csv/);
+  assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf], 'a byte-order mark, so Excel reads UTF-8');
+  assert.equal(new TextDecoder().decode(bytes), 'Order,Placed,Customer,Email,Status,Total,Currency\r\n');
+});
+
+function exportAsOwner(from: string, to: string): Promise<Response> {
+  const token = platform.hub.sessionToken({ appId: APP_ID, store: STORE, userId: '1', role: 'owner' });
+  const query = new URLSearchParams({ from, to });
+
+  return fetch(`${server.url}/api/export?${query}`, { headers: { Authorization: `Bearer ${token}` } });
+}
 
 function freePort(): Promise<number> {
   return new Promise((resolve) => {

@@ -15,6 +15,7 @@ import {
   sendError,
   serveWebApp,
 } from '@flycommerce/app-server';
+import { exportOrders } from './export.js';
 import { install } from './install.js';
 
 export interface App {
@@ -28,6 +29,7 @@ export type Route = (app: App, req: IncomingMessage, res: ServerResponse, url: U
 
 const routes: Record<string, Route> = {
   'GET /auth/callback': install,
+  'GET /api/export': exportOrders,
 };
 
 export function createApp(env: NodeJS.ProcessEnv = process.env): App {
