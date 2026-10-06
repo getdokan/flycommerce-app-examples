@@ -1,26 +1,15 @@
 import { HttpError } from '@flycommerce/app-server';
+import type { StoreOrder } from './columns.js';
 import { toCsv } from './csv.js';
 import type { Route } from './server.js';
 import { whoIsAsking } from './session.js';
-
-/** The fields of a store order this app exports. The store sends more. */
-export interface StoreOrder {
-  orderNo: number;
-  createdAt: string;
-  status: string;
-  total: number;
-  orderGroup?: {
-    currency: string;
-    customerInfo?: { firstName: string | null; lastName: string | null; email: string | null };
-  };
-}
-
-const HEADER = ['Order', 'Placed', 'Customer', 'Email', 'Status', 'Total', 'Currency'];
+import { checkColumns } from './settings.js';
 
 export const exportOrders: Route = async (app, req, res, url) => {
   const asking = await whoIsAsking(app, req);
   const { from, to } = period(url);
-  const rows: unknown[][] = [HEADER];
+  const columns = checkColumns(url.searchParams.get('columns')?.split(',').filter(Boolean));
+  const rows: unknown[][] = [columns.map((column) => column.header)];
 
   // FlyCommerce: as the user, the store decides whether this person may see orders — https://developers.flycommerce.com/docs/apps
   const orders = app.store.asUser(asking).paginate<StoreOrder>('/api/v1/orders', {
@@ -32,7 +21,7 @@ export const exportOrders: Route = async (app, req, res, url) => {
 
   for await (const order of orders) {
     if (Date.parse(order.createdAt) >= to.getTime()) break;
-    rows.push(row(order));
+    rows.push(columns.map((column) => column.value(order)));
   }
 
   res.writeHead(200, {
@@ -42,13 +31,6 @@ export const exportOrders: Route = async (app, req, res, url) => {
   });
   res.end(toCsv(rows));
 };
-
-function row(order: StoreOrder): unknown[] {
-  const customer = order.orderGroup?.customerInfo;
-  const name = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ');
-
-  return [order.orderNo, order.createdAt, name, customer?.email, order.status, order.total, order.orderGroup?.currency];
-}
 
 function period(url: URL): { from: Date; to: Date } {
   const from = new Date(url.searchParams.get('from') ?? '');

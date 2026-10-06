@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppBridge, useTitleBar } from '@flycommerce/app-bridge/react';
 import {
   Button,
@@ -15,26 +15,46 @@ import {
   PageHeaderDescription,
   PageHeaderTitle,
 } from '@flycommerce/ui';
+import { type StoreSettings, useApi } from './api';
+import { ColumnChoice } from './ColumnChoice';
+import { addDays, lastDays } from './dates';
+import { fileName } from './fileName';
 
 const TITLE = 'Export orders';
 const DESCRIPTION = 'Download the orders placed in a period as a CSV file for Excel or Google Sheets.';
 
 export function ExportOrders() {
+  const api = useApi();
   const bridge = useAppBridge();
   const { embedded } = useTitleBar({ title: TITLE, subtitle: DESCRIPTION });
   const [period, setPeriod] = useState<DateRange | undefined>(lastDays(30));
+  const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const [columns, setColumns] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    api<StoreSettings>('/api/settings')
+      .then((saved) => {
+        setSettings(saved);
+        setColumns(saved.columns);
+      })
+      .catch((failure: Error) => setError(failure.message));
+  }, [api]);
+
   const download = async () => {
-    if (!period?.from) return;
+    if (!period?.from || !settings) return;
     setBusy(true);
 
     try {
       // From the start of the first day to the start of the day after the last, in the merchant's time zone.
       const from = addDays(period.from, 0);
       const last = addDays(period.to ?? period.from, 0);
-      const query = new URLSearchParams({ from: from.toISOString(), to: addDays(last, 1).toISOString() });
+      const query = new URLSearchParams({
+        from: from.toISOString(),
+        to: addDays(last, 1).toISOString(),
+        columns: columns.join(','),
+      });
 
       const response = await bridge.fetch(`/api/export?${query}`);
       if (!response.ok) {
@@ -42,7 +62,7 @@ export function ExportOrders() {
         throw new Error(body.message ?? 'The export failed. Try again.');
       }
 
-      save(await response.blob(), `orders-${day(from)}-to-${day(last)}.csv`);
+      save(await response.blob(), fileName(settings.fileName, settings.store, from, last));
       setError(null);
     } catch (failure) {
       setError((failure as Error).message);
@@ -62,14 +82,25 @@ export function ExportOrders() {
         </PageHeader>
       )}
       <Card>
-        <CardContent className="grid gap-4">
+        <CardContent className="grid gap-6">
           <Field>
             <FieldLabel htmlFor="period">Orders placed</FieldLabel>
             <DateRangePicker id="period" value={period} onValueChange={setPeriod} />
             <FieldDescription>Every order in these days, oldest first.</FieldDescription>
-            {error && <FieldError>{error}</FieldError>}
           </Field>
-          <Button onClick={download} disabled={!period?.from || busy} className="justify-self-start">
+          {settings && (
+            <ColumnChoice
+              value={columns}
+              onValueChange={setColumns}
+              description="One row per order, with these columns. Change the defaults in Settings."
+            />
+          )}
+          {error && <FieldError>{error}</FieldError>}
+          <Button
+            onClick={download}
+            disabled={!period?.from || !settings || columns.length === 0 || busy}
+            className="justify-self-start"
+          >
             {busy ? 'Preparing…' : 'Download CSV'}
           </Button>
         </CardContent>
@@ -84,19 +115,4 @@ function save(file: Blob, name: string): void {
   link.download = name;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href));
-}
-
-function lastDays(count: number): DateRange {
-  const today = addDays(new Date(), 0);
-  return { from: addDays(today, 1 - count), to: today };
-}
-
-// Midnight, `count` calendar days later; plain milliseconds would drift an hour across a daylight-saving change.
-function addDays(date: Date, count: number): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + count);
-}
-
-function day(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
