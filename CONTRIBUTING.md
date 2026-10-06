@@ -37,8 +37,8 @@ Commit messages and pull request titles follow [Conventional Commits](https://ww
 | `ci` | GitHub Actions |
 | `chore` | anything else, such as a release |
 
-- The scope is optional: the example's folder, such as `order-review`.
-- Write the summary in the imperative, in lower case, with no full stop: `fix(order-review): skip orders that are already on hold`.
+- The scope is optional: the example's folder, such as `order-export`.
+- Write the summary in the imperative, in lower case, with no full stop: `fix(order-export): keep the time zone in the file name`.
 - A breaking change adds `!` after the type or scope and says in the body what to change.
 
 PRs are squash-merged, and a check fails the PR until its title follows the format. Keep the commits in the format too: a PR with one commit is squashed under that commit's message.

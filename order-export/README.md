@@ -8,7 +8,7 @@ It's the smallest useful FlyCommerce app, and the place to start. It shows the t
 2. **Know who's asking:** the page calls the app's server with a session token, and the server verifies it before trusting the store it names (`src/session.ts`).
 3. **Read the store:** the server reads the orders as that user, a page at a time, and turns them into CSV (`src/export.ts`, `src/csv.ts`).
 
-No webhooks, no database, no background jobs. When you need those, read [`order-review`](../order-review) next.
+No webhooks, no database, no background jobs. When you need those, the [Building apps](https://developers.flycommerce.com/docs/apps) guide covers them.
 
 ## Run it
 
