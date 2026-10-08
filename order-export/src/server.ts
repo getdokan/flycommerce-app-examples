@@ -19,6 +19,7 @@ import { Data } from './data.js';
 import { exportOrders } from './export.js';
 import { install } from './install.js';
 import { saveSettings, showSettings } from './settings.js';
+import { welcomeScript } from './storefront.js';
 
 export interface App {
   config: AppServerConfig;
@@ -35,6 +36,7 @@ const routes: Record<string, Route> = {
   'GET /api/export': exportOrders,
   'GET /api/settings': showSettings,
   'PUT /api/settings': saveSettings,
+  'GET /storefront/welcome.js': welcomeScript,
 };
 
 export function createApp(env: NodeJS.ProcessEnv = process.env): App {

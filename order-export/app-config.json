@@ -9,5 +9,8 @@
       { "slug": "export", "label": "Export orders", "path": "/export" },
       { "slug": "settings", "label": "Settings", "path": "/settings" }
     ]
+  },
+  "storefront": {
+    "scripts": [{ "handle": "welcome", "src": "http://localhost:4000/storefront/welcome.js", "load": "idle" }]
   }
 }

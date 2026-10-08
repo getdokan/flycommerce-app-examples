@@ -10,7 +10,7 @@ const CREDENTIALS_FILE = 'data/dev-credentials.json';
 const DATA_FILE = 'data/dev-order-export.json';
 const DAY = 24 * 60 * 60 * 1000;
 const appUrl = `http://localhost:${PORTS.app}`;
-const { appId, dashboard } = loadAppConfig('app-config.json');
+const { appId, dashboard, storefront } = loadAppConfig('app-config.json');
 
 // The emulator keeps everything in memory, so the app starts from nothing too.
 fs.rmSync(CREDENTIALS_FILE, { force: true });
@@ -57,6 +57,7 @@ const dashboardServer = await ExampleDashboard.start({
   appUrl,
   store: STORE,
   pages: dashboard.pages,
+  scripts: storefront?.scripts,
   port: PORTS.dashboard,
 });
 
@@ -64,6 +65,7 @@ console.log(`
   Order Export is running for ${STORE}.
 
   Dashboard   ${dashboardServer.url}/apps/export
+  Storefront  ${dashboardServer.url}/storefront
 `);
 
 process.on('SIGINT', async () => {

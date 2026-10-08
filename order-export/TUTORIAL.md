@@ -1,8 +1,8 @@
 # Build your first FlyCommerce app
 
-In four steps you'll build **Order Export**: a page inside the merchant's dashboard that downloads the orders placed in a period as a CSV file. Along the way you'll use the three things every FlyCommerce app does: install on a store, know who's asking, and read the store's data. Then you'll let the merchant make the file their own.
+In five steps you'll build **Order Export**: a page inside the merchant's dashboard that downloads the orders placed in a period as a CSV file. Along the way you'll use the three things every FlyCommerce app does: install on a store, know who's asking, and read the store's data. Then you'll let the merchant make the file their own, and greet the store's shoppers with a small storefront script.
 
-Each step is one commit, tagged `order-export-step-1` to `order-export-step-4`. To see the code after a step, run `git checkout order-export-step-2`.
+Each step is one commit, tagged `order-export-step-1` to `order-export-step-5`. To see the code after a step, run `git checkout order-export-step-2`.
 
 > **Preview.** The SDK packages arrive on npm with FlyCommerce's app platform launch; until then `npm install` can't fetch them.
 
@@ -214,9 +214,46 @@ Add `{ "slug": "settings", "label": "Settings", "path": "/settings" }` to `app-c
 
 Run `npm run dev` again. On **Settings**, change the format and watch the preview, uncheck a column or two, and **Save**. Back on **Export orders**, those columns are checked, and the file you download is named after your format.
 
+## 5. Greet shoppers on the storefront
+
+**Goal:** a small welcome message, the kind a live-chat app shows, appears on the store's catalogue pages, and the shopper can close it.
+
+Everything so far runs in the merchant's dashboard. A storefront script runs on the store's own pages instead, for every shopper. Declare it in `app-config.json`, next to `dashboard`:
+
+```json
+"storefront": {
+  "scripts": [{ "handle": "welcome", "src": "http://localhost:4000/storefront/welcome.js", "load": "idle" }]
+}
+```
+
+- `src` is on the same host as `appUrl`; the portal refuses any other.
+- `idle` loads it once the browser has nothing else to do, so it never slows the store down.
+- Declaring a script adds the `storefront.scripts` permission. The merchant grants it at install and can switch scripts off later.
+
+`storefront/welcome.js` is plain JavaScript, served as it is by `GET /storefront/welcome.js` in `src/storefront.ts`. It's the store's page, not yours, so the script keeps to its own corner: one element of its own, styled inside a shadow root, so the store's CSS can't reach in and its own can't leak out.
+
+```js
+const host = document.createElement('div');
+host.id = 'order-export-welcome';
+const root = host.attachShadow({ mode: 'open' });
+```
+
+The storefront sets `window.FlyCommerce` before the script loads, and fires `flycommerce:page` each time the shopper moves to another page without a reload. The script reads `pageType` from both to change its greeting on a product page:
+
+```js
+text.textContent = greeting(window.FlyCommerce?.pageType);
+window.addEventListener('flycommerce:page', follow);
+```
+
+The × button removes the element and stops listening. The storefront keeps the script across page changes, so a closed message stays closed while the shopper browses.
+
+The script never reads the page's cookies, storage or forms, and it doesn't load anything heavy: it's on every catalogue page of every store that installs the app.
+
+Run `npm run dev` again and open the **Storefront** address it prints (`http://127.0.0.1:4003/storefront`). The message appears in the corner; click **Green tea** and it asks about the product; close it and switch pages, and it stays closed.
+
 ## Test it
 
-`test/export.test.ts` runs the whole app against the emulator: the page is framed, the install keeps a credential, a request without this app's session token is refused, more than one page of orders comes back in order and is read as the user, awkward names stay text, and a backwards period is refused. Then the choices: only the chosen columns are written, in the list's order; unknown columns and unsafe file name formats are refused; and one store never sees another's settings.
+`test/export.test.ts` runs the whole app against the emulator: the page is framed, the install keeps a credential, a request without this app's session token is refused, more than one page of orders comes back in order and is read as the user, awkward names stay text, and a backwards period is refused. Then the choices: only the chosen columns are written, in the list's order; unknown columns and unsafe file name formats are refused; and one store never sees another's settings. `test/storefront.test.ts` checks the script: declared on the app's own host, served as JavaScript, and run by the emulator's example storefront.
 
 ```bash
 npm test
