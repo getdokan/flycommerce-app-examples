@@ -8,16 +8,6 @@ export interface Settings {
   chatId: string;
   minOrderValue: number;
   includeCustomerInfo: boolean;
-  webhookSecret?: string;
-}
-
-interface DiskSettings {
-  enabled: boolean;
-  sealedBotToken: string;
-  chatId: string;
-  minOrderValue: number;
-  includeCustomerInfo: boolean;
-  webhookSecret?: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -28,71 +18,52 @@ export const DEFAULT_SETTINGS: Settings = {
   includeCustomerInfo: true,
 };
 
-/** What the app keeps per store, in one JSON file with bot tokens sealed at rest. */
+// On disk the bot token and the webhook secret are sealed; everything else is plain.
+interface StoreRecord {
+  settings?: Omit<Settings, 'botToken'> & { sealedBotToken: string };
+  sealedWebhookSecret?: string;
+}
+
+/** What the app keeps per store, in one JSON file. */
 export class Data {
-  constructor(private readonly file: string, private readonly sealer: Sealer) {}
+  constructor(
+    private readonly file: string,
+    private readonly sealer: Sealer
+  ) {}
 
   settings(store: string): Settings {
-    const raw = this.read()[store];
-    if (!raw) return { ...DEFAULT_SETTINGS };
+    const saved = this.read()[store]?.settings;
+    if (!saved) return { ...DEFAULT_SETTINGS };
 
-    let botToken = '';
-    if (raw.sealedBotToken) {
-      try {
-        botToken = this.sealer.open(raw.sealedBotToken) ?? '';
-      } catch {
-        botToken = '';
-      }
-    }
-
-    return {
-      enabled: raw.enabled ?? false,
-      botToken,
-      chatId: raw.chatId ?? '',
-      minOrderValue: raw.minOrderValue ?? 0,
-      includeCustomerInfo: raw.includeCustomerInfo ?? true,
-      webhookSecret: raw.webhookSecret,
-    };
+    const { sealedBotToken, ...rest } = saved;
+    return { ...DEFAULT_SETTINGS, ...rest, botToken: sealedBotToken ? this.sealer.open(sealedBotToken) : '' };
   }
 
-  setSettings(store: string, settings: Settings): void {
-    const all = this.read();
-    const sealedBotToken = settings.botToken ? this.sealer.seal(settings.botToken) : '';
-
-    all[store] = {
-      enabled: settings.enabled,
-      sealedBotToken,
-      chatId: settings.chatId,
-      minOrderValue: settings.minOrderValue,
-      includeCustomerInfo: settings.includeCustomerInfo,
-      webhookSecret: settings.webhookSecret ?? all[store]?.webhookSecret,
-    };
-
-    this.write(all);
-  }
-
-  setWebhookSecret(store: string, secret: string): void {
-    const all = this.read();
-    if (!all[store]) {
-      all[store] = {
-        enabled: false,
-        sealedBotToken: '',
-        chatId: '',
-        minOrderValue: 0,
-        includeCustomerInfo: true,
-        webhookSecret: secret,
-      };
-    } else {
-      all[store].webhookSecret = secret;
-    }
-    this.write(all);
+  setSettings(store: string, { botToken, ...rest }: Settings): void {
+    this.update(store, (record) => {
+      record.settings = { ...rest, sealedBotToken: botToken ? this.sealer.seal(botToken) : '' };
+    });
   }
 
   webhookSecret(store: string): string | undefined {
-    return this.read()[store]?.webhookSecret;
+    const sealed = this.read()[store]?.sealedWebhookSecret;
+    return sealed ? this.sealer.open(sealed) : undefined;
   }
 
-  private read(): Record<string, DiskSettings> {
+  setWebhookSecret(store: string, secret: string): void {
+    this.update(store, (record) => {
+      record.sealedWebhookSecret = this.sealer.seal(secret);
+    });
+  }
+
+  private update(store: string, change: (record: StoreRecord) => void): void {
+    const all = this.read();
+    all[store] ??= {};
+    change(all[store]);
+    this.write(all);
+  }
+
+  private read(): Record<string, StoreRecord> {
     try {
       return JSON.parse(fs.readFileSync(this.file, 'utf8'));
     } catch (error) {
@@ -102,7 +73,7 @@ export class Data {
   }
 
   // Written beside the file and renamed over it, so a crash mid-write never leaves half a file.
-  private write(all: Record<string, DiskSettings>): void {
+  private write(all: Record<string, StoreRecord>): void {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     const temporary = `${this.file}.${process.pid}.tmp`;
     fs.writeFileSync(temporary, JSON.stringify(all, null, 2));

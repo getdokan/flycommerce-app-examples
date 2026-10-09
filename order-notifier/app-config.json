@@ -3,7 +3,7 @@
   "versionId": 1,
   "version": "1.0.0",
   "quote": "Instant Telegram alerts when orders are placed",
-  "appUrl": "http://localhost:4002",
+  "appUrl": "http://localhost:4004",
   "install": {
     "redirectUrl": "/auth/callback"
   },

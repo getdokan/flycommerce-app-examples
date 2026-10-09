@@ -26,6 +26,7 @@ export interface App {
   hub: HubClient;
   store: StoreApi;
   data: Data;
+  telegramApiUrl: string;
 }
 
 export type Route = (app: App, req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;
@@ -44,12 +45,15 @@ export function createApp(env: NodeJS.ProcessEnv = process.env): App {
   const config = { ...appServerConfigFromEnv(env), credentials };
   const hub = new HubClient(config);
 
+  if (!config.appUrl) throw new Error('APP_URL is required: stores send their order webhooks to it.');
+
   return {
     config,
     appConfig: loadAppConfig('app-config.json', { appId: config.appId }),
     hub,
     store: new StoreApi(config, hub),
-    data: new Data(env.DATA_FILE ?? 'data/notifier.json', sealer),
+    data: new Data(env.DATA_FILE ?? 'data/order-notifier.json', sealer),
+    telegramApiUrl: env.TELEGRAM_API_URL ?? 'https://api.telegram.org',
   };
 }
 
@@ -85,6 +89,6 @@ export async function startServer(app: App, port: number): Promise<{ url: string
 
 if (import.meta.filename === process.argv[1]) {
   loadEnvFile();
-  const server = await startServer(createApp(), Number(process.env.PORT ?? 4002));
+  const server = await startServer(createApp(), Number(process.env.PORT ?? 4004));
   console.log(`Order Notifier is listening on ${server.url}`);
 }

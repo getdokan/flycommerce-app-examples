@@ -1,13 +1,14 @@
 import { useCallback } from 'react';
 import { useAppBridge } from '@flycommerce/app-bridge/react';
 
+/** The settings as the server shows them: never the bot token, only whether one is saved. */
 export interface NotifierSettings {
   store: string;
-  botToken: string;
+  enabled: boolean;
+  botTokenSet: boolean;
   chatId: string;
   minOrderValue: number;
   includeCustomerInfo: boolean;
-  enabled: boolean;
 }
 
 /** Calls this app's own server with a fresh session token, and throws the server's message when it refuses. */
