@@ -1,63 +1,56 @@
 # Order Notifier
 
-Receive instant notifications in your Telegram chat or team channel whenever a new order is placed on your FlyCommerce store.
+A Telegram message whenever an order is placed. The merchant creates a bot with @BotFather, pastes its token and their chat ID on a Settings page inside the FlyCommerce dashboard, and from then on every new order arrives in that chat: number, total, status and, if they want, the customer's name and email.
 
-This example app demonstrates:
+It's the example to read after [`order-export`](../order-export), for the part that one leaves out: **the store telling the app something happened**.
 
-1. **Real-time Webhooks:** subscribing to store events (`orders.create`) and verifying incoming HMAC-SHA256 signatures (`src/webhooks.ts`).
-2. **Encrypted Credentials at Rest:** sealing third-party API tokens (`botToken`) using `@flycommerce/app-server`'s `Sealer` (`src/data.ts`).
-3. **Session-Authenticated Dashboard Settings:** an administrative settings page built with [`@flycommerce/ui`](https://ui.flycommerce.com) that verifies `whoIsAsking()` via session tokens (`src/pages/Settings.tsx`, `src/settings.ts`).
-4. **Third-Party API Dispatch:** formatting order payloads and dispatching rich messages to the Telegram Bot API (`src/telegram.ts`).
+1. **Subscribe:** on install the app asks the store for an `order.created` webhook to its own URL, and keeps the signing secret it gets back (`src/install.ts`, `subscribe()` in `src/webhooks.ts`).
+2. **Verify:** each delivery is checked against that store's secret, over the raw body, before anything reads it (`readWebhook()` in `src/webhooks.ts`).
+3. **Read the order:** a delivery carries the order as the store keeps it, with no customer or currency, so the app reads the order from the store API as itself (`asApp()`), then sends the message (`src/alert.ts`, `src/telegram.ts`).
 
----
+The bot token is the merchant's secret: it is sealed on disk, and the server never sends it back to the page. The webhook secrets are sealed too (`src/data.ts`).
 
-## Run it locally
+## Run it
 
-You need Node 22 or later. No FlyCommerce account or Telegram bot is needed to test: the emulator mocks the platform, and local tests mock the Telegram API.
+You need Node 22 or later. No FlyCommerce account: the emulator plays the store, the hub and the dashboard.
 
 ```bash
-cd order-notifier
 npm install
 npm run dev
 ```
 
-Open the dashboard URL printed to your terminal (e.g. `http://127.0.0.1:4007/apps/settings`).
+Open the dashboard address it prints (`http://127.0.0.1:4007/apps/settings`), paste a real bot token and chat ID, switch alerts on and click **Save**, then **Send test alert**. Back in the terminal, press Enter: the emulator's store places an order and delivers `order.created` to the app, and the alert arrives in Telegram. Every second order has a customer called `Tom & <Jerry>`, to show the message escaping it.
 
 ```bash
-npm test        # Runs end-to-end tests against the emulator
+npm test        # end to end against the emulator and a stand-in Telegram, no network
 ```
 
----
+## Files
 
-## File Structure
-
-| File                     | Purpose                                                                                     |
-| :----------------------- | :------------------------------------------------------------------------------------------ |
-| `src/server.ts`          | Server setup, route registration, and app bootstrap.                                        |
-| `src/webhooks.ts`        | `POST /webhooks/orders`: verifies HMAC signature, checks thresholds, and sends alert.       |
-| `src/telegram.ts`        | Formats order summary text and sends messages via Telegram Bot API.                         |
-| `src/settings.ts`        | `GET/PUT /api/settings` and `POST /api/test-alert`: saves settings and sends test messages. |
-| `src/data.ts`            | Multi-store settings storage with AES-256-GCM sealed bot tokens on disk.                    |
-| `src/session.ts`         | Verifies FlyCommerce session tokens to ensure calls originate from the store owner.         |
-| `src/install.ts`         | Handles OAuth install callback and automatically registers the webhook subscription.        |
-| `src/pages/Settings.tsx` | Dashboard UI for configuring bot token, chat ID, and notification rules.                    |
-| `test/notifier.test.ts`  | End-to-end tests verifying webhook signatures, sealing at rest, and Telegram alerts.        |
-
----
-
-## Setting Up with a Real Telegram Bot
-
-1. Open Telegram and search for **[@BotFather](https://t.me/BotFather)**.
-2. Send `/newbot`, choose a name and username, and copy the **Bot Token**.
-3. Open your bot on Telegram and click **Start** (or add your bot to a group/channel).
-4. Get your **Chat ID** (send a message to your bot, then open `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` in your browser, or use `@userinfobot`).
-5. Open **Telegram Alerts** in your FlyCommerce store dashboard, paste your token and Chat ID, and click **Send Test Alert**.
-
----
+| File                     | What it does                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `src/server.ts`          | Every route in one table, and `createApp()`. Start here.                                               |
+| `src/install.ts`         | The install URL: keeps the store's credential, then subscribes the store                               |
+| `src/webhooks.ts`        | `subscribe()`, and `POST /webhooks/orders`: verify, read the order, check the settings, send the alert |
+| `src/alert.ts`           | The message, with every value from the store escaped for Telegram's HTML                               |
+| `src/telegram.ts`        | `sendMessage` through the merchant's bot                                                               |
+| `src/settings.ts`        | `GET` and `PUT /api/settings`, and `POST /api/test-alert`                                              |
+| `src/data.ts`            | Each store's settings and webhook secret in one JSON file, the secrets sealed                          |
+| `src/session.ts`         | `whoIsAsking()`: verifies the session token                                                            |
+| `src/pages/Settings.tsx` | The settings page, built with [`@flycommerce/ui`](https://ui.flycommerce.com)                          |
+| `src/dev.ts`             | `npm run dev`: the emulator, the app and the example dashboard; Enter places an order                  |
+| `test/notifier.test.ts`  | Install and subscription, the session check, sealing, signatures, the alert and its escaping           |
 
 ## Run it on a real store
 
-1. In the [FlyCommerce Developer Portal](https://developers.flycommerce.com), create an app and request the `orders.read` and `webhooks.manage` permissions.
-2. Set the install URL to `https://<your-app-domain>/auth/callback`.
-3. Set your production environment variables (`FLYCOMMERCE_APP_ID`, `FLYCOMMERCE_APP_SECRET`, `ENCRYPTION_KEY`, `APP_URL`).
-4. Run `npm run build && npm start`.
+1. In the [developer portal](https://developers.flycommerce.com), create an app, request the `orders.read` and `webhooks.manage` permissions, and set the install URL to `https://<your-app>/auth/callback`.
+2. Create a version, put your App ID, version and URL in `app-config.json`, and upload it to that version.
+3. Copy `.env.example` to `.env` and fill it in. `APP_URL` must be reachable by the store over HTTPS: that's where webhooks go. Then `npm run build && npm start`.
+4. Install the app on a store you own: it's under **Apps → Your apps** until it's published.
+
+## What it doesn't do
+
+- **Retry.** A store sends each event once and doesn't retry ([webhooks](https://github.com/getdokan/flycommerce-sdk/blob/main/spec/webhooks.md)). If Telegram is down when an order arrives, that alert is lost; the app logs it and answers `{ "delivered": false }`.
+- **Notice a deleted subscription.** If the merchant deletes the webhook in their dashboard, alerts stop. Saving the settings subscribes again only when the app has no secret for the store.
+- **One alert per checkout on a marketplace.** `order.created` is per order, and a checkout with several vendors' products makes one order for each, so one alert each.
+- **Keep customer data.** Names and emails pass through on their way to Telegram; the app neither stores nor logs them.
