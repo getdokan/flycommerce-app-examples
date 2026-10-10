@@ -1,0 +1,17 @@
+{
+  "appId": "shopping-assistant",
+  "quote": "A shopping assistant for your storefront",
+  "appUrl": "http://localhost:4000",
+  "dashboard": {
+    "pages": []
+  },
+  "storefront": {
+    "scripts": [
+      {
+        "handle": "assistant",
+        "src": "/storefront/assistant.js",
+        "load": "idle"
+      }
+    ]
+  }
+}
