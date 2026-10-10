@@ -1,0 +1,31 @@
+{
+  "name": "shopping-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A shopping assistant on the storefront: finds products, adds them to the cart, and answers where a signed-in customer's order is. A FlyCommerce example app.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx src/dev.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@flycommerce/app-server": "^0.1.0-next.4"
+  },
+  "devDependencies": {
+    "@flycommerce/app-emulator": "^0.1.0-next.4",
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "prettier": {
+    "singleQuote": true,
+    "printWidth": 120,
+    "trailingComma": "es5"
+  }
+}
