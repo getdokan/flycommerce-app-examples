@@ -8,7 +8,7 @@ It's the example to read after [`order-export`](../order-export), for the part t
 2. **Verify:** each delivery is checked against that store's secret, over the raw body, before anything reads it (`readWebhook()` in `src/webhooks.ts`).
 3. **Read the order:** a delivery carries the order as the store keeps it, with no customer or currency, so the app reads the order from the store API as itself (`asApp()`), then sends the message (`src/alert.ts`, `src/telegram.ts`).
 
-The bot token is the merchant's secret: it is sealed on disk, and the server never sends it back to the page. The webhook secrets are sealed too (`src/data.ts`).
+The bot token is the merchant's secret: it is sealed on disk, and the server never sends it back to the page. The webhook secrets are sealed too (`src/data.ts`). On the Settings page a blank token field keeps the saved token; **Remove** next to it deletes the token from disk when the merchant saves, and turns alerts off, since there is no bot left to send them (`src/settings.ts`).
 
 ## Run it
 

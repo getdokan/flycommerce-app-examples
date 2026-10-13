@@ -4,19 +4,19 @@ A FlyCommerce example app. When a store delivers an `order.created` webhook, the
 
 ## Files
 
-| File                     | What it does                                                                                                   |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `src/server.ts`          | Every route in one table; `createApp()` wires config, sealed credentials, data, Telegram's URL and SDK clients |
-| `src/install.ts`         | Install redirect: `handleInstall()` keeps the credential, `onInstalled` calls `subscribe()`                    |
-| `src/webhooks.ts`        | `subscribe()`: `reconcileWebhook()` for `order.created`; `POST /webhooks/orders`: `readWebhook()`, then alert  |
-| `src/alert.ts`           | `StoreOrder` and the message text; every store value goes through `escape()`                                   |
-| `src/telegram.ts`        | `sendTelegramMessage()`: one `sendMessage` call, HTML parse mode, 10 s timeout                                 |
-| `src/settings.ts`        | `GET`/`PUT /api/settings` (the token is write-only) and `POST /api/test-alert`                                 |
-| `src/data.ts`            | `Data`: per-store settings and webhook secret in `DATA_FILE`; bot token and secret sealed with `Sealer`        |
-| `src/session.ts`         | `whoIsAsking()`: verifies the session token and refuses stores the app no longer serves                        |
-| `src/pages/Settings.tsx` | The settings page; `src/pages/api.ts` has `useApi()`                                                           |
-| `src/dev.ts`             | `npm run dev`: emulator, app and example dashboard on 4004-4007; Enter places an order and delivers it         |
-| `test/notifier.test.ts`  | Against the emulator and a stand-in Telegram server                                                            |
+| File                     | What it does                                                                                                                |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `src/server.ts`          | Every route in one table; `createApp()` wires config, sealed credentials, data, Telegram's URL and SDK clients              |
+| `src/install.ts`         | Install redirect: `handleInstall()` keeps the credential, `onInstalled` calls `subscribe()`                                 |
+| `src/webhooks.ts`        | `subscribe()`: `reconcileWebhook()` for `order.created`; `POST /webhooks/orders`: `readWebhook()`, then alert               |
+| `src/alert.ts`           | `StoreOrder` and the message text; every store value goes through `escape()`                                                |
+| `src/telegram.ts`        | `sendTelegramMessage()`: one `sendMessage` call, HTML parse mode, 10 s timeout                                              |
+| `src/settings.ts`        | `GET`/`PUT /api/settings` (the token is write-only; blank keeps it, `removeBotToken` deletes it) and `POST /api/test-alert` |
+| `src/data.ts`            | `Data`: per-store settings and webhook secret in `DATA_FILE`; bot token and secret sealed with `Sealer`                     |
+| `src/session.ts`         | `whoIsAsking()`: verifies the session token and refuses stores the app no longer serves                                     |
+| `src/pages/Settings.tsx` | The settings page; `src/pages/api.ts` has `useApi()`                                                                        |
+| `src/dev.ts`             | `npm run dev`: emulator, app and example dashboard on 4004-4007; Enter places an order and delivers it                      |
+| `test/notifier.test.ts`  | Against the emulator and a stand-in Telegram server                                                                         |
 
 ## Commands
 

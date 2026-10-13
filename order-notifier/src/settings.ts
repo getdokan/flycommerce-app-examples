@@ -26,10 +26,13 @@ export const saveSettings: Route = async (app, req, res) => {
     throw new HttpError(400, 'invalid_settings', 'Enter the bot token and the chat ID as text.');
   }
 
+  // The page never has the saved token, so a blank one means "keep it"; removing has to be asked for.
+  const botToken = body.removeBotToken === true ? '' : body.botToken.trim() || current.botToken;
+
   const settings: Settings = {
-    enabled: body.enabled === true,
-    // The page never has the saved token, so a blank one means "keep it".
-    botToken: body.botToken.trim() || current.botToken,
+    // Alerts can't be on without a bot to send them.
+    enabled: body.enabled === true && botToken !== '',
+    botToken,
     chatId: body.chatId.trim(),
     minOrderValue: Math.max(0, Number(body.minOrderValue) || 0),
     includeCustomerInfo: body.includeCustomerInfo !== false,
