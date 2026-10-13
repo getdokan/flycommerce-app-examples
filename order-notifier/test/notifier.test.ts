@@ -150,12 +150,30 @@ test('never sends the bot token back, and seals it and the webhook secret on dis
 });
 
 test('keeps the saved bot token when the form leaves it blank', async () => {
-  await saveSettings(STORE, { botToken: '', chatId: '111' });
+  const saved = await saveSettings(STORE, { botToken: '', chatId: '111' });
+  assert.equal(((await saved.json()) as Record<string, unknown>).botTokenSet, true);
   const response = await call(STORE, '/api/test-alert', { method: 'POST' });
 
   assert.equal(response.status, 200);
   assert.equal(sent[0].botToken, BOT_TOKEN);
   assert.equal(sent[0].body.chat_id, '111');
+});
+
+test('removes the saved bot token from disk, and turns alerts off with it', async () => {
+  await saveSettings(STORE);
+  const saved = await saveSettings(STORE, { botToken: '', removeBotToken: true });
+  const body = (await saved.json()) as Record<string, unknown>;
+
+  assert.equal(saved.status, 200);
+  assert.equal(body.botTokenSet, false);
+  assert.equal(body.enabled, false);
+  assert.equal(JSON.parse(fs.readFileSync(dataFile, 'utf8'))[STORE].settings.sealedBotToken, '');
+
+  const shown = (await (await call(STORE, '/api/settings')).json()) as Record<string, unknown>;
+  assert.equal(shown.botTokenSet, false);
+
+  await placeOrder();
+  assert.equal(sent.length, 0);
 });
 
 test('sends a test alert with the saved bot and chat', async () => {

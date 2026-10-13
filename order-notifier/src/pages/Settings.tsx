@@ -10,6 +10,10 @@ import {
   FieldError,
   FieldLabel,
   Input,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
   PageHeader,
   PageHeaderContent,
   PageHeaderDescription,
@@ -28,6 +32,7 @@ export function Settings() {
   const [settings, setSettings] = useState<NotifierSettings | null>(null);
   // The saved token never comes back from the server; this holds only a new one being typed.
   const [botToken, setBotToken] = useState('');
+  const [removeBotToken, setRemoveBotToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -56,9 +61,11 @@ export function Settings() {
 
     run(async () => {
       const { store: _store, botTokenSet: _set, ...rest } = settings;
-      setSettings(await api<NotifierSettings>('/api/settings', { method: 'PUT', body: { ...rest, botToken } }));
+      const body = { ...rest, botToken, removeBotToken };
+      setSettings(await api<NotifierSettings>('/api/settings', { method: 'PUT', body }));
       setBotToken('');
-      return 'Settings saved';
+      setRemoveBotToken(false);
+      return removeBotToken ? 'Bot token removed' : 'Settings saved';
     });
   };
 
@@ -90,16 +97,44 @@ export function Settings() {
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="bot-token">Bot token</FieldLabel>
-                  <Input
-                    id="bot-token"
-                    type="password"
-                    autoComplete="off"
-                    placeholder={settings.botTokenSet ? 'Saved. Enter a new one to replace it.' : '123456789:ABC…'}
-                    value={botToken}
-                    onChange={(e) => setBotToken(e.target.value)}
-                  />
+                  <InputGroup>
+                    <InputGroupInput
+                      id="bot-token"
+                      type="password"
+                      autoComplete="off"
+                      disabled={removeBotToken}
+                      placeholder={
+                        removeBotToken
+                          ? 'Removed when you save.'
+                          : settings.botTokenSet
+                          ? 'Saved. Enter a new one to replace it.'
+                          : '123456789:ABC…'
+                      }
+                      value={botToken}
+                      onChange={(e) => setBotToken(e.target.value)}
+                    />
+                    {settings.botTokenSet && (
+                      <InputGroupAddon align="inline-end">
+                        <InputGroupButton
+                          variant={removeBotToken ? 'ghost' : 'destructive'}
+                          onClick={() => {
+                            setBotToken('');
+                            setRemoveBotToken(!removeBotToken);
+                          }}
+                        >
+                          {removeBotToken ? 'Keep' : 'Remove'}
+                        </InputGroupButton>
+                      </InputGroupAddon>
+                    )}
+                  </InputGroup>
                   <FieldDescription>
-                    In Telegram, send <code>/newbot</code> to @BotFather. It answers with the token.
+                    {removeBotToken ? (
+                      'Saving deletes the token and turns alerts off until you save a new one.'
+                    ) : (
+                      <>
+                        In Telegram, send <code>/newbot</code> to @BotFather. It answers with the token.
+                      </>
+                    )}
                   </FieldDescription>
                 </Field>
                 <Field>
@@ -141,7 +176,12 @@ export function Settings() {
               <Button type="submit" disabled={!settings || busy}>
                 {busy ? 'Saving…' : 'Save'}
               </Button>
-              <Button type="button" variant="outline" onClick={sendTest} disabled={!settings?.botTokenSet || busy}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={sendTest}
+                disabled={!settings?.botTokenSet || removeBotToken || busy}
+              >
                 Send test alert
               </Button>
             </div>
